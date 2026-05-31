@@ -12,8 +12,9 @@ from docagent.retriever import get_retriever
 QUERIES = [
     "How does FastAPI handle a normal def (sync) path operation function?",
     "How do I declare a path parameter with an integer type?",
-    "How do I return a specific HTTP error to the client?",
-    "What is the capital of France?",  # out of scope -> should be empty/low
+    "What does PEP 484 specify about type hints?",        # -> peps/*.rst
+    "What are protocols and structural subtyping?",       # -> pdf (page-cited)
+    "What is the capital of France?",  # out of scope -> should be empty
 ]
 
 
