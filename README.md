@@ -1,5 +1,7 @@
 # docagent — agentic RAG over your local documents
 
+**English** | [中文](README.zh-CN.md)
+
 Ask natural-language questions over your own files (Markdown / text / PDF) and get
 answers that **always cite their sources**. Built on [LangGraph](https://langchain-ai.github.io/langgraph/).
 
@@ -57,11 +59,52 @@ python -m docagent.ingest --path ./sample_docs
 
 # 4. Ask away
 python -m docagent.ask "What vector store does docagent use?"
-python -m docagent.ask "What is the capital of France?"   # politely declined
 ```
 
 Point `--path` at any folder of your own `.md` / `.txt` / `.rst` / `.pdf` files to
 build a knowledge base over your own documents. Re-run with `--reset` to rebuild.
+
+## Example run
+
+**Build the knowledge base** from the bundled `sample_docs/`:
+
+```console
+$ python -m docagent.ingest --path ./sample_docs --reset
+Loading documents from ./sample_docs ...
+Loaded 3 raw document section(s).
+Split into 6 chunks.
+Ingested 6 chunks into collection 'docagent' at ./chroma_db.
+Done.
+```
+
+**Ask an in-scope question** — the agent retrieves, then answers with citations:
+
+```console
+$ python -m docagent.ask "What vector store does docagent use, and do I need an API key for embeddings?"
+🔎 Intent: IN_SCOPE — retrieving from knowledge base
+
+=== Answer ===
+docagent uses a local persistent Chroma vector store (default `./chroma_db`).
+You do not need an API key for embeddings; embeddings are generated locally with
+a sentence-transformers model (`all-MiniLM-L6-v2` by default), so the retrieval
+half runs fully locally. The answer-generation LLM may require an API key
+depending on the provider you choose, but embeddings themselves do not.
+
+=== Citations ===
+- faq.md
+- architecture.md
+- about_docagent.md
+```
+
+**Ask an out-of-scope question** — the router declines without wasting a retrieval:
+
+```console
+$ python -m docagent.ask "What is the capital of France?"
+🚫 Intent: OUT_OF_SCOPE — politely declining
+
+This question is outside the scope of the local knowledge base, so I can't
+answer it from the available documents.
+```
 
 ## How it works
 
@@ -94,10 +137,25 @@ tests/                  # local retrieval tests + LLM end-to-end tests
 
 ## Testing
 
-```bash
-python tests/run_all_tests.py         # local retrieval tests (no API key)
-python tests/run_all_tests.py --all   # + LLM end-to-end (needs API key)
+```console
+$ python tests/run_all_tests.py          # local retrieval only (no API key)
+$ python tests/run_all_tests.py --all    # + LLM end-to-end (needs API key)
+...
+tests/test_response.py::test_expected_tool_calls[...vector_store...]  PASSED
+tests/test_response.py::test_expected_tool_calls[...file_formats...]  PASSED
+tests/test_response.py::test_expected_tool_calls[...embeddings...]    PASSED
+tests/test_response.py::test_response_criteria[...vector_store...]    PASSED
+tests/test_response.py::test_response_criteria[...file_formats...]    PASSED
+tests/test_response.py::test_response_criteria[...embeddings...]      PASSED
+tests/test_retrieval.py::test_load_sample_documents                   PASSED
+tests/test_retrieval.py::test_search_finds_vector_store_fact          PASSED
+tests/test_retrieval.py::test_search_finds_file_formats_fact          PASSED
+=================== 9 passed ===================
 ```
+
+- `tests/test_retrieval.py` — ingestion + semantic search over `sample_docs`; **no API key**, also runs in CI.
+- `tests/test_response.py` — end-to-end agent: checks the expected tool calls and
+  grades answer quality with an LLM (**needs an API key**).
 
 ## Configuration
 
