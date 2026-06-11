@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from docagent import bm25_index
 from docagent.configuration import (
     DEFAULT_CHROMA_PATH,
     DEFAULT_CHUNK_OVERLAP,
@@ -147,6 +148,21 @@ def main():
         f"Ingested {len(chunks)} chunks into collection "
         f"'{args.collection}' at {args.chroma_path}."
     )
+
+    # Rebuild the persistent sparse index over the *whole* collection, so the
+    # retriever memory-maps it at query time instead of loading every chunk and
+    # building BM25 in RAM at startup. A full rebuild keeps append and reset
+    # correct without incremental-update bookkeeping (ingest is a batch job).
+    all_data = vs.get()
+    all_metas = all_data.get("metadatas", []) or []
+    bm25_index.build(
+        args.chroma_path,
+        args.collection,
+        all_data.get("ids", []) or [],
+        all_data.get("documents", []) or [],
+        [(m or {}).get("source", "unknown") for m in all_metas],
+    )
+    print(f"Built sparse BM25 index over {len(all_metas)} chunks.")
     print("Done.")
 
 

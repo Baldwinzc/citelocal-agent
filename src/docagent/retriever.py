@@ -7,6 +7,12 @@ This lifts results above naive top-k cosine similarity, and the threshold gives
 the agent a principled way to say "not in the docs" (everything fell below it).
 Each result carries precise provenance (file + line range, or PDF page) for
 exact citations.
+
+**Scale:** the sparse side is a persistent, memory-mapped ``bm25s`` index built at
+ingest (see ``bm25_index``), and chunk text is fetched **only for the fused
+candidates** via ``vs.get(ids=...)`` — so startup no longer loads the whole corpus
+into RAM. When no persistent index exists (a throwaway/small KB, or a store built
+before the index existed), it transparently falls back to the in-memory build.
 """
 
 import re
@@ -17,6 +23,7 @@ from typing import List
 from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder
 
+from docagent import bm25_index
 from docagent.configuration import (
     DEFAULT_CANDIDATE_K,
     DEFAULT_CHROMA_PATH,
@@ -69,22 +76,44 @@ class HybridRetriever:
         collection_name: str = DEFAULT_COLLECTION,
         reranker_model: str = DEFAULT_RERANKER_MODEL,
     ):
+        self.persist_directory = persist_directory
+        self.collection_name = collection_name
         self.vs = get_vectorstore(
             persist_directory=persist_directory, collection_name=collection_name
         )
-        data = self.vs.get()  # all stored items; fine for a local KB
-        self.ids: List[str] = data.get("ids", []) or []
-        self.docs: List[str] = data.get("documents", []) or []
-        self.metas: List[dict] = data.get("metadatas", []) or []
-        self._by_id = {
-            cid: (text, meta or {})
-            for cid, text, meta in zip(self.ids, self.docs, self.metas)
-        }
-        self._bm25 = BM25Okapi([_tokenize(d) for d in self.docs]) if self.docs else None
+
+        if bm25_index.exists(persist_directory, collection_name):
+            # Scalable path: memory-mapped sparse index, text fetched on demand.
+            self._sparse: bm25_index.SparseIndex | None = bm25_index.SparseIndex(
+                persist_directory, collection_name
+            )
+            self._sources = bm25_index.load_sources(persist_directory, collection_name)
+            self._num_chunks = self._sparse.num_docs
+            self._fallback_by_id: dict | None = None
+            self._fallback_bm25 = None
+            self._fallback_ids: List[str] = []
+        else:
+            # Fallback: build in memory from the full collection (old behaviour;
+            # fine for throwaway/small KBs or stores predating the sparse index).
+            data = self.vs.get()
+            ids = data.get("ids", []) or []
+            docs = data.get("documents", []) or []
+            metas = data.get("metadatas", []) or []
+            self._sparse = None
+            self._fallback_ids = ids
+            self._fallback_by_id = {
+                cid: (text, meta or {}) for cid, text, meta in zip(ids, docs, metas)
+            }
+            self._fallback_bm25 = (
+                BM25Okapi([_tokenize(d) for d in docs]) if docs else None
+            )
+            self._sources = sorted({(m or {}).get("source", "unknown") for m in metas})
+            self._num_chunks = len(ids)
+
         # The cross-encoder is loaded lazily (only when a search actually runs),
         # so cheap guards like `is_empty` don't drag in the reranker model.
         self._reranker_model = reranker_model
-        self._reranker_obj = None
+        self._reranker_obj: CrossEncoder | None = None
 
     @property
     def _reranker(self) -> CrossEncoder:
@@ -93,8 +122,12 @@ class HybridRetriever:
         return self._reranker_obj
 
     @property
+    def num_chunks(self) -> int:
+        return self._num_chunks
+
+    @property
     def is_empty(self) -> bool:
-        return not self.docs
+        return self._num_chunks == 0
 
     def _dense_ids(self, query: str, candidate_k: int) -> List[str]:
         results = self.vs.similarity_search(query, k=candidate_k)
@@ -105,11 +138,35 @@ class HybridRetriever:
         ]
 
     def _bm25_ids(self, query: str, candidate_k: int) -> List[str]:
-        if self._bm25 is None:
+        if self._sparse is not None:
+            return self._sparse.query(query, candidate_k)
+        if self._fallback_bm25 is None:
             return []
-        scores = self._bm25.get_scores(_tokenize(query))
+        scores = self._fallback_bm25.get_scores(_tokenize(query))
         ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
-        return [self.ids[i] for i in ranked[:candidate_k]]
+        return [self._fallback_ids[i] for i in ranked[:candidate_k]]
+
+    def _text_meta(self, ids: List[str]) -> dict:
+        """Return ``{chunk_id: (text, meta)}`` for the given ids only.
+
+        Scalable path fetches just these ids from Chroma (no full-corpus load);
+        fallback path reads the in-memory map.
+        """
+        if self._sparse is None:
+            return {
+                cid: self._fallback_by_id[cid]
+                for cid in ids
+                if cid in self._fallback_by_id
+            }
+        if not ids:
+            return {}
+        data = self.vs.get(ids=ids)
+        return {
+            cid: (text or "", meta or {})
+            for cid, text, meta in zip(
+                data.get("ids", []), data.get("documents", []), data.get("metadatas", [])
+            )
+        }
 
     @staticmethod
     def _rrf(rank_lists: List[List[str]], rrf_k: int) -> List[str]:
@@ -131,12 +188,16 @@ class HybridRetriever:
             return []
         dense = self._dense_ids(query, candidate_k)
         sparse = self._bm25_ids(query, candidate_k)
-        fused = [c for c in self._rrf([dense, sparse], rrf_k) if c in self._by_id]
-        fused = fused[:candidate_k]
+        fused = self._rrf([dense, sparse], rrf_k)[:candidate_k]
         if not fused:
             return []
 
-        pairs = [(query, self._by_id[cid][0]) for cid in fused]
+        by_id = self._text_meta(fused)
+        fused = [c for c in fused if c in by_id]
+        if not fused:
+            return []
+
+        pairs = [(query, by_id[cid][0]) for cid in fused]
         scores = self._reranker.predict(pairs)
         ranked = sorted(zip(fused, scores), key=lambda x: float(x[1]), reverse=True)
 
@@ -144,7 +205,7 @@ class HybridRetriever:
         for cid, score in ranked:
             if float(score) < score_threshold:
                 continue
-            text, meta = self._by_id[cid]
+            text, meta = by_id[cid]
             out.append(
                 RetrievedChunk(
                     text=text,
@@ -161,7 +222,7 @@ class HybridRetriever:
         return out
 
     def list_sources(self) -> List[str]:
-        return sorted({(m or {}).get("source", "unknown") for m in self.metas})
+        return sorted(self._sources)
 
 
 @lru_cache(maxsize=2)
@@ -169,7 +230,7 @@ def get_retriever(
     persist_directory: str = DEFAULT_CHROMA_PATH,
     collection_name: str = DEFAULT_COLLECTION,
 ) -> HybridRetriever:
-    """Cached retriever (loads chunks + BM25 + cross-encoder once)."""
+    """Cached retriever (loads the mmap sparse index + lazy cross-encoder once)."""
     return HybridRetriever(
         persist_directory=persist_directory, collection_name=collection_name
     )

@@ -19,7 +19,7 @@ QUERIES = [
 
 def main():
     r = get_retriever()
-    print(f"Knowledge base: {len(r.docs)} chunks across {len(r.list_sources())} docs\n")
+    print(f"Knowledge base: {r.num_chunks} chunks across {len(r.list_sources())} docs\n")
     for q in QUERIES:
         print(f"Q: {q}")
         hits = r.search(q, k=3)

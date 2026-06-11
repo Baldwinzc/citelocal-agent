@@ -112,7 +112,7 @@ def main():
 
     retriever = get_retriever()
     agent = get_default_agent()
-    print(f"Corpus: {len(retriever.docs)} chunks / {len(retriever.list_sources())} docs")
+    print(f"Corpus: {retriever.num_chunks} chunks / {len(retriever.list_sources())} docs")
     print(f"Eval split={args.split}  cases={len(cases)}\n")
 
     overall = _blank_stats()
