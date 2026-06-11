@@ -6,11 +6,14 @@ each one is actually **entailed by the evidence text** that was retrieved — so
 fluent sentence citing a real chunk that doesn't actually support it is caught.
 
 The backend is pluggable:
+    - ``backend="nli"``  : a local Natural-Language-Inference cross-encoder scores
+                           (premise=evidence chunk, hypothesis=claim) — offline, no
+                           API key. A sentence is supported if ANY single chunk
+                           entails it (checked per chunk, not the concatenation).
     - ``backend="llm"``  : one structured LLM call grades all sentences at once
                            (used by the multi-agent Verifier — M2).
     - ``entail_fn=...``  : inject a ``(claim, evidence_text) -> bool`` scorer; this
-                           is how an offline stub (tests) or an NLI cross-encoder
-                           (M3b) plugs in without touching callers.
+                           is how an offline stub (tests) plugs in.
     - ``backend="off"``  : no-op (everything supported) — keeps CI free/offline.
 
 ``verify_claims`` returns ``{supported, unsupported, verdicts}`` where ``verdicts``
@@ -18,9 +21,13 @@ is one ``{sentence, supported}`` per sentence, in order.
 """
 
 import re
+from functools import lru_cache
 from typing import Callable
 
 from pydantic import BaseModel, Field
+
+# NLI label order for cross-encoder/nli-* models: [contradiction, entailment, neutral].
+_ENTAILMENT_IDX = 1
 
 # Sentence splitter: break on ., !, ? followed by whitespace. Good enough for
 # answer prose and stays offline (no nltk/spacy download).
@@ -78,12 +85,45 @@ def _llm_verify(llm, sentences: list[str], evidence_text: str) -> list[bool]:
     return flags[: len(sentences)]
 
 
+def _argmax(row) -> int:
+    row = list(row)
+    return max(range(len(row)), key=lambda i: row[i])
+
+
+def _row_is_entailment(logit_row, entail_idx: int = _ENTAILMENT_IDX) -> bool:
+    """True iff the NLI model's top class for this (premise, hypothesis) pair is
+    'entailment'."""
+    return _argmax(logit_row) == entail_idx
+
+
+@lru_cache(maxsize=2)
+def _get_nli(model_name: str):
+    from sentence_transformers import CrossEncoder
+
+    return CrossEncoder(model_name)
+
+
+def _nli_verify(sentences: list[str], chunks: list[str], model_name: str) -> list[bool]:
+    """A sentence is supported if any single evidence chunk entails it."""
+    chunks = [c for c in chunks if c and c.strip()]
+    if not chunks:
+        return [False] * len(sentences)
+    model = _get_nli(model_name)
+    flags = []
+    for s in sentences:
+        claim = _claim_text(s)
+        logits = model.predict([(chunk, claim) for chunk in chunks])
+        flags.append(any(_row_is_entailment(row) for row in logits))
+    return flags
+
+
 def verify_claims(
     answer_text: str,
     evidence: list[dict] | None,
     *,
     backend: str = "llm",
     llm=None,
+    nli_model: str = "cross-encoder/nli-deberta-v3-base",
     entail_fn: Callable[[str, str], bool] | None = None,
 ) -> dict:
     """Verify each sentence of ``answer_text`` against ``evidence`` chunk texts.
@@ -95,7 +135,8 @@ def verify_claims(
     if not sentences:
         return {"supported": [], "unsupported": [], "verdicts": []}
 
-    evidence_text = "\n\n".join((e.get("text") or "") for e in (evidence or [])).strip()
+    chunks = [(e.get("text") or "") for e in (evidence or [])]
+    evidence_text = "\n\n".join(chunks).strip()
 
     if entail_fn is not None:
         flags = [entail_fn(_claim_text(s), evidence_text) for s in sentences]
@@ -104,6 +145,8 @@ def verify_claims(
     elif not evidence_text:
         # No evidence at all -> nothing can be grounded.
         flags = [False] * len(sentences)
+    elif backend == "nli":
+        flags = _nli_verify(sentences, chunks, nli_model)
     elif backend == "llm":
         if llm is None:
             raise ValueError("verify_claims(backend='llm') requires an llm")

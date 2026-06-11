@@ -11,6 +11,7 @@ import argparse
 from dotenv import load_dotenv
 
 from docagent.agent import get_default_agent
+from docagent.configuration import Configuration
 from docagent.utils import extract_outcome
 
 
@@ -42,6 +43,10 @@ def _print_outcome(o: dict) -> None:
         print("\n=== Unsupported citations (dropped — not actually retrieved) ===")
         for c in o["unsupported"]:
             print(f"- {c}")
+    if o.get("unsupported_sentences"):
+        print("\n=== Unverified sentences (not entailed by the evidence) ===")
+        for s in o["unsupported_sentences"]:
+            print(f"- {s}")
 
 
 def main():
@@ -49,9 +54,18 @@ def main():
     parser = argparse.ArgumentParser(
         description="Ask the local document knowledge base a question."
     )
+    cfg = Configuration.from_runnable_config()
     parser.add_argument("question", help="The question to ask.")
     parser.add_argument(
         "--trace", action="store_true", help="Print the agent's retrieval trace."
+    )
+    parser.add_argument(
+        "--verify",
+        choices=["off", "nli", "llm"],
+        default=cfg.entailment_backend,
+        help="Per-sentence entailment check of the answer against the evidence "
+        "(nli = local cross-encoder, offline; llm = one grading call). "
+        f"Default: {cfg.entailment_backend} (ENTAILMENT_BACKEND).",
     )
     args = parser.parse_args()
 
@@ -60,9 +74,22 @@ def main():
         config={"recursion_limit": 12},
     )
 
+    verify_llm = None
+    if args.verify == "llm":
+        from langchain.chat_models import init_chat_model
+
+        verify_llm = init_chat_model(cfg.llm_model, temperature=0.0)
+
     if args.trace:
         _print_trace(result)
-    _print_outcome(extract_outcome(result))
+    _print_outcome(
+        extract_outcome(
+            result,
+            verify_backend=args.verify,
+            llm=verify_llm,
+            nli_model=cfg.nli_model,
+        )
+    )
 
 
 if __name__ == "__main__":

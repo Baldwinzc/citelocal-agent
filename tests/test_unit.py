@@ -181,6 +181,81 @@ def test_verify_claims_no_evidence_unsupported():
     assert out["unsupported"] == ["A claim."]  # nothing to ground against
 
 
+# --- M3b: NLI backend (label logic + per-chunk aggregation, no model download) ---
+
+def test_argmax_and_row_is_entailment():
+    from docagent.verify import _argmax, _row_is_entailment
+
+    assert _argmax([0.9, 0.1, 0.0]) == 0
+    assert _argmax([0.1, 0.9, 0.0]) == 1
+    # entailment is index 1 for cross-encoder/nli-* models
+    assert _row_is_entailment([0.1, 0.9, 0.0]) is True
+    assert _row_is_entailment([0.9, 0.1, 0.0]) is False
+
+
+class _FakeNLI:
+    """Stub cross-encoder: entailment (idx 1) iff claim and chunk share 'threadpool'."""
+
+    def predict(self, pairs):
+        rows = []
+        for chunk, claim in pairs:
+            ent = "threadpool" in claim.lower() and "threadpool" in chunk.lower()
+            rows.append([0.0, 1.0, 0.0] if ent else [1.0, 0.0, 0.0])
+        return rows
+
+
+def test_verify_claims_nli_any_chunk_entails(monkeypatch):
+    monkeypatch.setattr("docagent.verify._get_nli", lambda name: _FakeNLI())
+    evidence = [
+        {"locator": "a.md:L1-9", "text": "the call runs in a threadpool"},
+        {"locator": "b.md:L1-9", "text": "unrelated noise"},
+    ]
+    out = verify_claims(
+        "It runs in a threadpool [a.md:L1-9]. It also cures cancer.",
+        evidence,
+        backend="nli",
+    )
+    # supported because the FIRST chunk entails it; second sentence entailed by none
+    assert out["supported"] == ["It runs in a threadpool [a.md:L1-9]."]
+    assert out["unsupported"] == ["It also cures cancer."]
+
+
+def test_extract_outcome_entailment_optin():
+    from docagent.utils import extract_outcome
+
+    class _Msg:
+        def __init__(self, tool_calls):
+            self.tool_calls = tool_calls
+            self.content = ""
+
+    answer_tc = {
+        "name": "Answer",
+        "args": {
+            "answer": "It runs in a threadpool. It also cures cancer.",
+            "citations": ["async.md:L1-9"],
+        },
+        "id": "1",
+    }
+    result = {
+        "classification_decision": "in_scope",
+        "retrieved_locators": ["async.md:L1-9"],
+        "evidence": [{"locator": "async.md:L1-9", "text": "runs in a threadpool"}],
+        "messages": [_Msg([answer_tc])],
+    }
+
+    # default (off): citations verified, but no sentence-level check runs
+    base = extract_outcome(result)
+    assert base["citations"] == ["async.md:L1-9"]
+    assert base["unsupported_sentences"] == [] and base["claim_verdicts"] == []
+
+    # opt-in with an injected stub scorer (offline, no model)
+    verified = extract_outcome(
+        result, entail_fn=lambda claim, ev: "threadpool" in claim.lower()
+    )
+    assert verified["unsupported_sentences"] == ["It also cures cancer."]
+    assert len(verified["claim_verdicts"]) == 2
+
+
 class _FakeLLM:
     """Build-time stand-in: only the wiring methods are exercised, never invoke."""
 

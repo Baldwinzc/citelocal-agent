@@ -42,6 +42,14 @@ DEFAULT_RRF_K = int(os.environ.get("RRF_K", "60"))
 # --- LLM (only the answer step may need a key) ---
 DEFAULT_LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-4.1")
 
+# --- Claim verification (per-sentence citation entailment) ---
+# Backend that checks each answer sentence is actually entailed by the retrieved
+# evidence: "off" (default, no-op), "nli" (a local cross-encoder — offline, no
+# API key), or "llm" (one structured grading call, reuses the answer model).
+DEFAULT_ENTAILMENT_BACKEND = os.environ.get("ENTAILMENT_BACKEND", "off")
+# NLI cross-encoder for the "nli" backend. Labels: contradiction/entailment/neutral.
+DEFAULT_NLI_MODEL = os.environ.get("NLI_MODEL", "cross-encoder/nli-deberta-v3-base")
+
 
 @dataclass(kw_only=True)
 class Configuration:
@@ -55,6 +63,8 @@ class Configuration:
     top_k: int = DEFAULT_TOP_K
     candidate_k: int = DEFAULT_CANDIDATE_K
     score_threshold: float = DEFAULT_SCORE_THRESHOLD
+    entailment_backend: str = DEFAULT_ENTAILMENT_BACKEND
+    nli_model: str = DEFAULT_NLI_MODEL
 
     @classmethod
     def from_runnable_config(
