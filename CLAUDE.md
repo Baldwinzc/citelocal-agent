@@ -25,6 +25,10 @@ locally and need no key.
   complexity**, then routes: `in_scope + simple` → `response_agent` (the single RAG
   loop: `llm_call` → `should_continue` → `environment`, built by
   `build_research_loop`); `in_scope + complex` → `orchestrator` (multi-agent).
+  `get_default_agent()` is single-shot; `get_chat_agent()` compiles with an
+  `InMemorySaver` checkpointer for multi-turn memory (invoke with a `thread_id`).
+  Recursion budgets are per-path, from `Configuration` (wrapper nodes invoke each
+  inner graph with its own limit).
 - `src/docagent/orchestrator.py` — the complex path: `planner` decomposes the
   question → parallel `researcher`s (each reuses the same retrieval loop, via the
   `Send` API) → `verifier` (per-sentence entailment) → `synthesizer` (one final
@@ -34,7 +38,8 @@ locally and need no key.
   check each is entailed by the retrieved evidence text (pluggable backend:
   LLM judge / injected `entail_fn` / off).
 - `src/docagent/ingest.py` — ingestion CLI (`python -m docagent.ingest --path ...`).
-- `src/docagent/ask.py` — query CLI (`python -m docagent.ask "..."`).
+- `src/docagent/ask.py` — single-shot query CLI (`python -m docagent.ask "..."`);
+  `src/docagent/chat.py` — multi-turn REPL (`python -m docagent.chat`).
 - `src/docagent/vectorstore.py` — shared embeddings + Chroma backend, imported by
   both ingest and the retrieval tools so they stay in sync.
 - `src/docagent/tools/retrieval_tools.py` — `search_docs`, `list_sources`,

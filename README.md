@@ -45,6 +45,8 @@ python -m docagent.ingest --path ./papers --reset
 
 # 4. Ask
 python -m docagent.ask --trace "How is BERT related to the Transformer?"
+#   multi-turn chat (follow-ups remember earlier turns):
+python -m docagent.chat
 #   or the web UI:
 python -m docagent.web        # http://127.0.0.1:8000
 ```
@@ -89,7 +91,9 @@ A small chat front-end (FastAPI + a static Tailwind page) showing the answer, th
 intent badge, citation chips, dropped (unsupported) citations, and a collapsible
 retrieval trace. `python -m docagent.web` → http://127.0.0.1:8000.
 
-API: `POST /api/ask {question}` → `{kind, intent, answer, question, citations, unsupported, trace}`.
+API: `POST /api/ask {question, session_id?}` → `{kind, intent, answer, question, citations, unsupported, trace}`.
+Pass a stable `session_id` to hold a multi-turn conversation (follow-ups resolve
+against earlier turns via a per-thread checkpointer); omit it for a one-shot answer.
 
 ## Architecture
 

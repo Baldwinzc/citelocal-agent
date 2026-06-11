@@ -5,11 +5,15 @@ Run:
     # or: uvicorn docagent.web:app --reload
 
 Endpoints:
-    POST /api/ask      {question} -> {kind, intent, answer, question, citations, unsupported, trace}
+    POST /api/ask      {question, session_id?} -> {kind, intent, answer, ...}
     GET  /api/sources  -> {sources: [...]}
     GET  /             -> the chat UI (static/index.html)
+
+Pass a stable ``session_id`` to /api/ask to hold a multi-turn conversation; omit
+it for a one-shot, stateless answer.
 """
 
+import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,7 +23,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from docagent.agent import get_default_agent  # noqa: E402 (after load_dotenv)
+from docagent.agent import get_chat_agent  # noqa: E402 (after load_dotenv)
 from docagent.retriever import get_retriever  # noqa: E402
 from docagent.utils import extract_outcome  # noqa: E402
 
@@ -31,6 +35,7 @@ app = FastAPI(
 
 class AskRequest(BaseModel):
     question: str
+    session_id: str | None = None  # supply to keep a multi-turn conversation
 
 
 class AskResponse(BaseModel):
@@ -45,7 +50,13 @@ class AskResponse(BaseModel):
 
 @app.post("/api/ask", response_model=AskResponse)
 def ask(req: AskRequest) -> AskResponse:
-    result = get_default_agent().invoke({"question_input": {"question": req.question}})
+    # A stable session_id threads the conversation; without one, use a throwaway
+    # thread so the request is effectively stateless.
+    thread_id = req.session_id or uuid.uuid4().hex
+    result = get_chat_agent().invoke(
+        {"question_input": {"question": req.question}},
+        config={"configurable": {"thread_id": thread_id}},
+    )
     o = extract_outcome(result)
     return AskResponse(
         kind=o["kind"],

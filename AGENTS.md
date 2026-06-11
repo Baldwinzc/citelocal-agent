@@ -22,10 +22,11 @@ pip install -e .
 - Multi-agent: `src/docagent/orchestrator.py` (planner→researchers→verifier→synthesizer),
   `src/docagent/verify.py` (per-sentence citation entailment).
 - Tools: `src/docagent/tools/retrieval_tools.py`
-- Ingest / ask CLIs: `src/docagent/ingest.py`, `src/docagent/ask.py`
+- Ingest / ask / chat CLIs: `src/docagent/ingest.py`, `src/docagent/ask.py`,
+  `src/docagent/chat.py` (multi-turn; `get_chat_agent()` + thread_id)
 - Eval: `src/docagent/eval/` (`data/qa_cases.jsonl` dataset + `run_eval.py`)
-- Tests: `tests/` (`test_unit.py`/`test_retrieval.py` need no key; `test_response.py`
-  and `test_orchestrator.py` do)
+- Tests: `tests/` (`test_unit.py`/`test_retrieval.py` need no key; `test_response.py`,
+  `test_orchestrator.py`, `test_chat.py` do)
 
 ## Rules
 

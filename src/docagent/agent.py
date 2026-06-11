@@ -45,6 +45,7 @@ from docagent.prompts import (
 from docagent.retriever import get_retriever
 from docagent.schemas import IntentSchema, State, StateInput
 from docagent.tools import get_tools_by_name, make_retrieval_tools
+from docagent.utils import extract_message_content
 
 TERMINAL_TOOLS = {"Answer", "Question"}
 # Parse each search_docs result block: "[i] locator: <loc>  (relevance <s>)\n<text>".
@@ -130,6 +131,31 @@ def build_research_loop(llm_with_tools, tools_by_name, system_prompt):
     return builder.compile()
 
 
+_SIMPLE_PREFIX = "Answer this question using the knowledge base: "
+
+
+def _recent_dialogue(messages: list, max_msgs: int = 4) -> list[dict]:
+    """Recent user/assistant turns as ``{role, content}`` dicts, for the router.
+
+    Lets the intent router classify a follow-up ("tell me more", "why?") in the
+    context of the conversation. Tool messages and tool-call-only (empty-content)
+    assistant messages are skipped; the simple-path instruction prefix is stripped.
+    """
+    dialogue = []
+    for m in messages:
+        if isinstance(m, dict):
+            role, content = m.get("role"), m.get("content", "") or ""
+        else:
+            content = extract_message_content(m)
+            cls = type(m).__name__.lower()
+            role = "user" if "human" in cls else "assistant" if "ai" in cls else None
+        if role in ("user", "assistant") and content and content.strip():
+            dialogue.append(
+                {"role": role, "content": content.replace(_SIMPLE_PREFIX, "").strip()}
+            )
+    return dialogue[-max_msgs:]
+
+
 def _merge_subgraph_result(out: dict, prior_msg_count: int) -> dict:
     """Merge a subgraph's final state back into the parent.
 
@@ -144,11 +170,13 @@ def _merge_subgraph_result(out: dict, prior_msg_count: int) -> dict:
     return update
 
 
-def build_agent(config: Configuration | None = None):
+def build_agent(config: Configuration | None = None, checkpointer=None):
     """Build and compile the agent graph for a given configuration.
 
     All model/tool wiring lives here (not at module import), captured in node
     closures, so the same module can serve multiple configs and import stays cheap.
+    Pass a ``checkpointer`` (e.g. ``InMemorySaver``) to persist state per
+    ``thread_id`` for multi-turn conversations (see ``get_chat_agent``).
     """
     config = config or Configuration.from_runnable_config()
 
@@ -208,25 +236,31 @@ def build_agent(config: Configuration | None = None):
                 },
             )
 
-        result = llm_router.invoke(
-            [
-                {
-                    "role": "system",
-                    "content": intent_system_prompt.format(
-                        kb_description=default_kb_description,
-                        intent_instructions=default_intent_instructions,
-                    ),
-                },
-                {"role": "user", "content": intent_user_prompt.format(question=question)},
-            ]
-        )
+        # Recent turns give the router context so follow-ups classify correctly.
+        router_messages = [
+            {
+                "role": "system",
+                "content": intent_system_prompt.format(
+                    kb_description=default_kb_description,
+                    intent_instructions=default_intent_instructions,
+                ),
+            },
+            *_recent_dialogue(state.get("messages", []) or []),
+            {"role": "user", "content": intent_user_prompt.format(question=question)},
+        ]
+        result = llm_router.invoke(router_messages)
 
         if result.classification == "in_scope":
             if result.complexity == "complex":
                 print("🔎 Intent: IN_SCOPE (complex) — multi-agent orchestrator")
                 return Command(
                     goto="orchestrator",
-                    update={"classification_decision": "in_scope"},
+                    # record the human turn so multi-turn history stays coherent
+                    # (the orchestrator itself reads question_input, not messages)
+                    update={
+                        "classification_decision": "in_scope",
+                        "messages": [{"role": "user", "content": question}],
+                    },
                 )
             print("🔎 Intent: IN_SCOPE — retrieving from knowledge base")
             return Command(
@@ -264,7 +298,7 @@ def build_agent(config: Configuration | None = None):
         .add_node("orchestrator", orchestrator_node)
         .add_edge(START, "intent_router")
     )
-    return overall_workflow.compile()
+    return overall_workflow.compile(checkpointer=checkpointer)
 
 
 def make_graph():
@@ -274,5 +308,19 @@ def make_graph():
 
 @lru_cache(maxsize=1)
 def get_default_agent():
-    """Lazily-built, cached default agent (used by the CLI and web server)."""
+    """Lazily-built, cached single-shot agent (no memory across invocations)."""
     return build_agent()
+
+
+@lru_cache(maxsize=1)
+def get_chat_agent():
+    """Cached multi-turn agent backed by an in-process checkpointer.
+
+    Invoke with ``config={"configurable": {"thread_id": <id>}}``; state (the
+    conversation messages) persists per thread, so follow-up questions resolve
+    against earlier turns. Swap in a persistent saver (e.g. SqliteSaver) for
+    durability across process restarts.
+    """
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    return build_agent(checkpointer=InMemorySaver())

@@ -297,3 +297,31 @@ def test_merge_subgraph_result_omits_absent_keys():
     upd = _merge_subgraph_result({"messages": ["only"]}, 0)
     assert upd["messages"] == ["only"]
     assert "trace" not in upd and "evidence" not in upd
+
+
+# --- C: multi-turn — router conversation context helper (offline) ---
+
+def test_recent_dialogue_filters_and_strips_prefix():
+    from docagent.agent import _recent_dialogue
+
+    msgs = [
+        {"role": "user", "content": "Answer this question using the knowledge base: What is BM25?"},
+        {"role": "assistant", "content": ""},      # tool-call-only -> skipped
+        {"role": "tool", "content": "observation"},  # tool msg -> skipped
+        {"role": "assistant", "content": "BM25 is a sparse ranking function."},
+    ]
+    assert _recent_dialogue(msgs) == [
+        {"role": "user", "content": "What is BM25?"},  # instruction prefix stripped
+        {"role": "assistant", "content": "BM25 is a sparse ranking function."},
+    ]
+
+
+def test_recent_dialogue_caps_and_handles_message_objects():
+    from docagent.agent import _recent_dialogue
+
+    class HumanMessage:  # name drives the role mapping
+        def __init__(self, content):
+            self.content = content
+
+    assert len(_recent_dialogue([{"role": "user", "content": f"q{i}"} for i in range(6)], 3)) == 3
+    assert _recent_dialogue([HumanMessage("hello")]) == [{"role": "user", "content": "hello"}]

@@ -34,6 +34,8 @@ python -m docagent.ingest --path ./papers --reset
 
 # 4. 提问
 python -m docagent.ask --trace "How is BERT related to the Transformer?"
+#   多轮对话（追问会记住前几轮）：
+python -m docagent.chat
 #   或 Web UI：
 python -m docagent.web        # http://127.0.0.1:8000
 ```
@@ -73,7 +75,8 @@ Transformer [bert.pdf (p.1); bert.pdf (p.3)].
 
 小型聊天前端(FastAPI + 静态 Tailwind),展示答案、意图徽章、引用 chips、被丢弃的未支撑引用、可折叠检索 trace。`python -m docagent.web` → http://127.0.0.1:8000。
 
-API:`POST /api/ask {question}` → `{kind, intent, answer, question, citations, unsupported, trace}`。
+API:`POST /api/ask {question, session_id?}` → `{kind, intent, answer, question, citations, unsupported, trace}`。
+传入稳定的 `session_id` 即可保持多轮对话(追问通过按线程的 checkpointer 关联前几轮);不传则为单轮无状态回答。
 
 ## 架构
 
