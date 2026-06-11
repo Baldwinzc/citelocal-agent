@@ -20,10 +20,19 @@ locally and need no key.
 
 ## Key modules
 
-- `src/docagent/agent.py` — the LangGraph graph. Compiled graph object:
-  `docagent`; uncompiled builder (used by tests): `overall_workflow`. Two layers:
-  `intent_router` (in_scope / out_of_scope) → `response_agent` (the RAG loop:
-  `llm_call` → `should_continue` → `environment`).
+- `src/docagent/agent.py` — the LangGraph graph, built by the `build_agent(config)`
+  factory (nothing initialised at import). `intent_router` classifies scope **and
+  complexity**, then routes: `in_scope + simple` → `response_agent` (the single RAG
+  loop: `llm_call` → `should_continue` → `environment`, built by
+  `build_research_loop`); `in_scope + complex` → `orchestrator` (multi-agent).
+- `src/docagent/orchestrator.py` — the complex path: `planner` decomposes the
+  question → parallel `researcher`s (each reuses the same retrieval loop, via the
+  `Send` API) → `verifier` (per-sentence entailment) → `synthesizer` (one final
+  `Answer`). Researchers write to `sub_results` (not `messages`) so parallel
+  branches merge via `operator.add`.
+- `src/docagent/verify.py` — `verify_claims()`: split an answer into sentences and
+  check each is entailed by the retrieved evidence text (pluggable backend:
+  LLM judge / injected `entail_fn` / off).
 - `src/docagent/ingest.py` — ingestion CLI (`python -m docagent.ingest --path ...`).
 - `src/docagent/ask.py` — query CLI (`python -m docagent.ask "..."`).
 - `src/docagent/vectorstore.py` — shared embeddings + Chroma backend, imported by

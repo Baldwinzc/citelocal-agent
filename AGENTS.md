@@ -17,10 +17,15 @@ pip install -e .
 
 ## Where things live
 
-- Graph: `src/docagent/agent.py` (`docagent` compiled, `overall_workflow` builder)
+- Graph: `src/docagent/agent.py` — `build_agent(config)` factory; router picks
+  `response_agent` (simple) vs `orchestrator` (complex) by question complexity.
+- Multi-agent: `src/docagent/orchestrator.py` (planner→researchers→verifier→synthesizer),
+  `src/docagent/verify.py` (per-sentence citation entailment).
 - Tools: `src/docagent/tools/retrieval_tools.py`
 - Ingest / ask CLIs: `src/docagent/ingest.py`, `src/docagent/ask.py`
-- Tests: `tests/` (`test_retrieval.py` needs no key; `test_response.py` does)
+- Eval: `src/docagent/eval/` (`data/qa_cases.jsonl` dataset + `run_eval.py`)
+- Tests: `tests/` (`test_unit.py`/`test_retrieval.py` need no key; `test_response.py`
+  and `test_orchestrator.py` do)
 
 ## Rules
 

@@ -7,6 +7,7 @@ or embedding model.
 
 from langchain_core.documents import Document
 
+from docagent.agent import _parse_search_results, build_research_loop
 from docagent.eval.qa_dataset import (
     CATEGORIES,
     INTENTS,
@@ -15,8 +16,11 @@ from docagent.eval.qa_dataset import (
     qa_names,
 )
 from docagent.ingest import chunk_documents
+from docagent.orchestrator import build_orchestrator
 from docagent.retriever import HybridRetriever
+from docagent.schemas import IntentSchema
 from docagent.utils import extract_outcome, source_of
+from docagent.verify import split_sentences, verify_claims
 
 
 class _Msg:
@@ -112,3 +116,86 @@ def test_qa_dataset_split_filter():
     assert all(c["split"] == "full_corpus" for c in full)
     assert all(c["split"] == "offline_sample" for c in offline)
     assert len(full) + len(offline) == len(load_qa_cases())
+
+
+# --- M2: multi-agent helpers (all offline, no LLM) ---
+
+# Exactly the format search_docs emits (retrieval_tools.py), incl. a blank line
+# inside a chunk, to prove the parser captures locator + full text per block.
+_SEARCH_OUTPUT = (
+    "[1] locator: bert.pdf (p.3)  (relevance 2.60)\n"
+    "BERT is a bidirectional Transformer encoder.\n\n"
+    "Pre-trained on masked LM.\n\n"
+    "[2] locator: notes/attention.md:L1-9  (relevance 1.20)\n"
+    "Attention relates any two positions in one step."
+)
+
+
+def test_parse_search_results_captures_locator_and_text():
+    pairs = _parse_search_results(_SEARCH_OUTPUT)
+    assert [loc for loc, _ in pairs] == ["bert.pdf (p.3)", "notes/attention.md:L1-9"]
+    # text includes the chunk's internal blank line, not the next block
+    assert "Pre-trained on masked LM." in pairs[0][1]
+    assert "[2]" not in pairs[0][1]
+    assert pairs[1][1] == "Attention relates any two positions in one step."
+
+
+def test_parse_search_results_empty_on_no_hits():
+    assert _parse_search_results("No sufficiently relevant chunks found.") == []
+
+
+def test_intent_schema_complexity_default_and_set():
+    assert IntentSchema(reasoning="x", classification="in_scope").complexity == "simple"
+    s = IntentSchema(reasoning="x", classification="in_scope", complexity="complex")
+    assert s.complexity == "complex"
+
+
+def test_split_sentences():
+    sents = split_sentences("First fact. Second fact! Third fact?")
+    assert sents == ["First fact.", "Second fact!", "Third fact?"]
+    assert split_sentences("") == []
+
+
+def test_verify_claims_drops_unentailed_sentence():
+    # stub entailment: a claim is supported iff its key term appears in evidence
+    def stub(claim, evidence_text):
+        return "threadpool" in claim.lower()
+
+    evidence = [{"locator": "async.md:L1-9", "text": "irrelevant"}]
+    out = verify_claims(
+        "It runs in a threadpool [async.md:L1-9]. It also cures cancer.",
+        evidence,
+        entail_fn=stub,
+    )
+    assert out["supported"] == ["It runs in a threadpool [async.md:L1-9]."]
+    assert out["unsupported"] == ["It also cures cancer."]
+
+
+def test_verify_claims_off_backend_is_noop():
+    out = verify_claims("Any claim.", [{"locator": "x", "text": ""}], backend="off")
+    assert out["unsupported"] == [] and out["supported"] == ["Any claim."]
+
+
+def test_verify_claims_no_evidence_unsupported():
+    out = verify_claims("A claim.", [], backend="llm")
+    assert out["unsupported"] == ["A claim."]  # nothing to ground against
+
+
+class _FakeLLM:
+    """Build-time stand-in: only the wiring methods are exercised, never invoke."""
+
+    def with_structured_output(self, schema):
+        return self
+
+    def bind_tools(self, tools, tool_choice=None):
+        return self
+
+
+def test_research_loop_graph_compiles():
+    g = build_research_loop(_FakeLLM(), {}, "system prompt").get_graph()
+    assert {"llm_call", "environment"} <= set(g.nodes)
+
+
+def test_orchestrator_graph_wiring():
+    g = build_orchestrator(_FakeLLM(), object()).get_graph()
+    assert {"planner", "researcher", "verifier", "synthesizer"} <= set(g.nodes)
