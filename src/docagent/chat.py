@@ -20,11 +20,13 @@ from dotenv import load_dotenv
 from docagent.agent import get_chat_agent
 from docagent.ask import _print_outcome
 from docagent.configuration import Configuration
+from docagent.logging_config import configure_logging
 from docagent.utils import extract_outcome
 
 
 def main():
     load_dotenv()
+    configure_logging()
     cfg = Configuration.from_runnable_config()
     parser = argparse.ArgumentParser(description="Chat with the local knowledge base.")
     parser.add_argument(

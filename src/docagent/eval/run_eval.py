@@ -22,6 +22,7 @@ deltas between milestones can be tracked.
 import argparse
 import json
 from collections import defaultdict
+from typing import cast
 
 from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
@@ -30,6 +31,7 @@ from pydantic import BaseModel, Field
 from docagent.agent import get_default_agent
 from docagent.configuration import DEFAULT_LLM_MODEL, DEFAULT_TOP_K
 from docagent.eval.qa_dataset import CATEGORIES, load_qa_cases
+from docagent.logging_config import configure_logging
 from docagent.retriever import get_retriever
 from docagent.utils import extract_outcome, source_of
 
@@ -52,14 +54,17 @@ JUDGE_SYS = (
 
 
 def _judge_answer(criteria: str, question: str, answer: str) -> bool:
-    g = _judge.invoke(
-        [
-            {"role": "system", "content": JUDGE_SYS},
-            {
-                "role": "user",
-                "content": f"Question: {question}\n\nCriterion: {criteria}\n\nAnswer:\n{answer}",
-            },
-        ]
+    g = cast(
+        Grade,
+        _judge.invoke(
+            [
+                {"role": "system", "content": JUDGE_SYS},
+                {
+                    "role": "user",
+                    "content": f"Question: {question}\n\nCriterion: {criteria}\n\nAnswer:\n{answer}",
+                },
+            ]
+        ),
     )
     return bool(g.correct)
 
@@ -97,6 +102,7 @@ def _summarise(s: dict) -> dict:
 
 
 def main():
+    configure_logging()
     parser = argparse.ArgumentParser(description="Evaluate docagent over the QA dataset.")
     parser.add_argument("--split", default="full_corpus",
                         choices=["full_corpus", "offline_sample"])

@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from docagent.agent import get_default_agent
 from docagent.configuration import Configuration
+from docagent.logging_config import configure_logging
 from docagent.utils import extract_outcome
 
 
@@ -51,6 +52,7 @@ def _print_outcome(o: dict) -> None:
 
 def main():
     load_dotenv()
+    configure_logging()
     parser = argparse.ArgumentParser(
         description="Ask the local document knowledge base a question."
     )

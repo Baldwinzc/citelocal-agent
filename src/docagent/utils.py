@@ -19,7 +19,7 @@ def extract_message_content(message) -> str:
 
 def extract_tool_calls(messages: List[Any]) -> List[str]:
     """Extract tool-call names (lower-cased) from a list of messages."""
-    names = []
+    names: list[str] = []
     for message in messages:
         if isinstance(message, dict) and message.get("tool_calls"):
             names.extend(c["name"].lower() for c in message["tool_calls"])
@@ -73,7 +73,8 @@ def extract_outcome(
     retrieved_sources = {source_of(r) for r in retrieved_set}
     messages = result.get("messages", [])
 
-    answer, raw_citations, question = "", [], None
+    answer, question = "", None
+    raw_citations: list[str] = []
     for msg in reversed(messages):
         for tc in getattr(msg, "tool_calls", None) or []:
             if tc["name"] == "Answer":

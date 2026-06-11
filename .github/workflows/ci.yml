@@ -24,6 +24,9 @@ jobs:
       - name: Lint (ruff)
         run: ruff check src tests scripts
 
+      - name: Type check (mypy)
+        run: mypy
+
       - name: Unit tests (offline — no network, no model downloads, no API key)
         run: python -m pytest tests/test_unit.py -v
 

@@ -24,8 +24,11 @@ from pydantic import BaseModel
 load_dotenv()
 
 from docagent.agent import get_chat_agent  # noqa: E402 (after load_dotenv)
+from docagent.logging_config import configure_logging  # noqa: E402
 from docagent.retriever import get_retriever  # noqa: E402
 from docagent.utils import extract_outcome  # noqa: E402
+
+configure_logging()
 
 app = FastAPI(
     title="docagent",

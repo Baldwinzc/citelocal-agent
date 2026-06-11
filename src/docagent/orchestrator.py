@@ -147,7 +147,7 @@ def build_orchestrator(
 
     builder = StateGraph(State)
     builder.add_node("planner", planner)
-    builder.add_node("researcher", researcher)
+    builder.add_node("researcher", researcher)  # type: ignore[type-var]  # Send payload
     builder.add_node("verifier", verifier)
     builder.add_node("synthesizer", synthesizer)
     builder.add_edge(START, "planner")

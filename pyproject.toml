@@ -36,6 +36,12 @@ where = ["src"]
 [tool.setuptools.package-data]
 docagent = ["static/*", "py.typed"]
 
+[tool.mypy]
+python_version = "3.11"
+files = ["src/docagent"]
+ignore_missing_imports = true   # langchain/langgraph/chroma ship partial stubs
+check_untyped_defs = false      # graph node closures are dynamically typed
+
 [tool.ruff]
 src = ["src", "tests", "scripts"]
 lint.select = [

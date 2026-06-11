@@ -130,12 +130,12 @@ class HybridRetriever:
         return self._num_chunks == 0
 
     def _dense_ids(self, query: str, candidate_k: int) -> List[str]:
-        results = self.vs.similarity_search(query, k=candidate_k)
-        return [
-            (d.metadata or {}).get("chunk_id")
-            for d in results
-            if (d.metadata or {}).get("chunk_id") is not None
-        ]
+        ids: List[str] = []
+        for d in self.vs.similarity_search(query, k=candidate_k):
+            cid = (d.metadata or {}).get("chunk_id")
+            if cid is not None:
+                ids.append(cid)
+        return ids
 
     def _bm25_ids(self, query: str, candidate_k: int) -> List[str]:
         if self._sparse is not None:
@@ -153,11 +153,8 @@ class HybridRetriever:
         fallback path reads the in-memory map.
         """
         if self._sparse is None:
-            return {
-                cid: self._fallback_by_id[cid]
-                for cid in ids
-                if cid in self._fallback_by_id
-            }
+            by_id = self._fallback_by_id or {}
+            return {cid: by_id[cid] for cid in ids if cid in by_id}
         if not ids:
             return {}
         data = self.vs.get(ids=ids)
@@ -198,7 +195,7 @@ class HybridRetriever:
             return []
 
         pairs = [(query, by_id[cid][0]) for cid in fused]
-        scores = self._reranker.predict(pairs)
+        scores = self._reranker.predict(pairs)  # type: ignore[arg-type]
         ranked = sorted(zip(fused, scores), key=lambda x: float(x[1]), reverse=True)
 
         out: List[RetrievedChunk] = []

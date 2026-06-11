@@ -24,9 +24,10 @@ against what was actually retrieved) and the chunk texts in ``state["evidence"]`
 (so claims can be checked for entailment against the supporting text).
 """
 
+import logging
 import re
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, cast
 
 from langchain.chat_models import init_chat_model
 from langgraph.graph import END, START, StateGraph
@@ -46,6 +47,8 @@ from docagent.retriever import get_retriever
 from docagent.schemas import IntentSchema, State, StateInput
 from docagent.tools import get_tools_by_name, make_retrieval_tools
 from docagent.utils import extract_message_content
+
+logger = logging.getLogger(__name__)
 
 TERMINAL_TOOLS = {"Answer", "Question"}
 # Parse each search_docs result block: "[i] locator: <loc>  (relevance <s>)\n<text>".
@@ -87,7 +90,7 @@ def build_research_loop(llm_with_tools, tools_by_name, system_prompt):
     def tool_node(state: State):
         """Run non-terminal tools; record trace + retrieved locators + evidence."""
         result, trace, locators, evidence = [], [], [], []
-        for tool_call in state["messages"][-1].tool_calls:
+        for tool_call in getattr(state["messages"][-1], "tool_calls", None) or []:
             name = tool_call["name"]
             try:
                 observation = tools_by_name[name].invoke(tool_call["args"])
@@ -112,10 +115,10 @@ def build_research_loop(llm_with_tools, tools_by_name, system_prompt):
             "evidence": evidence,
         }
 
-    def should_continue(state: State) -> Literal["environment", "__end__"]:
-        last_message = state["messages"][-1]
-        if last_message.tool_calls:
-            if any(tc["name"] in TERMINAL_TOOLS for tc in last_message.tool_calls):
+    def should_continue(state: State) -> str:
+        tool_calls = getattr(state["messages"][-1], "tool_calls", None)
+        if tool_calls:
+            if any(tc["name"] in TERMINAL_TOOLS for tc in tool_calls):
                 return END
             return "environment"
         return END
@@ -223,7 +226,7 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
 
         if retriever.is_empty:
             return Command(
-                goto=END,
+                goto=END,  # type: ignore[arg-type]
                 update={
                     "classification_decision": "out_of_scope",
                     "messages": [
@@ -248,11 +251,11 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
             *_recent_dialogue(state.get("messages", []) or []),
             {"role": "user", "content": intent_user_prompt.format(question=question)},
         ]
-        result = llm_router.invoke(router_messages)
+        result = cast(IntentSchema, llm_router.invoke(router_messages))
 
         if result.classification == "in_scope":
             if result.complexity == "complex":
-                print("🔎 Intent: IN_SCOPE (complex) — multi-agent orchestrator")
+                logger.info("intent: in_scope (complex) — multi-agent orchestrator")
                 return Command(
                     goto="orchestrator",
                     # record the human turn so multi-turn history stays coherent
@@ -262,7 +265,7 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
                         "messages": [{"role": "user", "content": question}],
                     },
                 )
-            print("🔎 Intent: IN_SCOPE — retrieving from knowledge base")
+            logger.info("intent: in_scope (simple) — retrieving from knowledge base")
             return Command(
                 goto="response_agent",
                 update={
@@ -276,9 +279,9 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
                 },
             )
 
-        print("🚫 Intent: OUT_OF_SCOPE — politely declining")
+        logger.info("intent: out_of_scope — declining")
         return Command(
-            goto=END,
+            goto=END,  # type: ignore[arg-type]
             update={
                 "classification_decision": "out_of_scope",
                 "messages": [
