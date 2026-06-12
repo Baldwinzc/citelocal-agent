@@ -138,7 +138,7 @@ python -m docagent.eval.run_eval --split offline_sample --categories multi_hop
 
 `run_eval` **同时输出总体与按类别分组**的所有指标(按类别这一视图,才能证明某次改动是否真有帮助,比如多跳),并写出机器可读的 `eval_results.json` 基线,便于追踪里程碑间的差异。
 
-当前评测集含**约 90 条**用例,覆盖 6 个类别,跨 5 篇内置笔记(`offline_sample`)与 8 篇 demo 论文(`full_corpus`)。最近一次 `offline_sample`(59 题)结果:
+当前评测集含 **132 条**用例,覆盖 6 个类别,跨 **9 篇内置笔记**(`offline_sample`)与 8 篇 demo 论文(`full_corpus`)。其中 **28 道多跳题**故意需要**同时检索多篇文档**(每题标注 ≥2 个 `expected_sources`),专门考核「一问多文」的检索 + 综合。下表为 `offline_sample` 的一次测量结果:
 
 | 指标 | 结果 |
 |---|---|
