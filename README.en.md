@@ -169,10 +169,11 @@ and writes a machine-readable `eval_results.json` baseline for tracking deltas.
 The bundled corpus is now **106 notes** (`sample_notes/`) spanning architecture
 internals, training, tokenization, alignment, decoding, retrieval, vector indexes,
 RAG, agents, and evaluation — a larger, harder-to-discriminate retrieval corpus.
-The curated eval set holds **132 cases** across 6 categories (`offline_sample` +
-the 8-paper `full_corpus`). **28 multi-hop cases deliberately require retrieving
+The curated eval set holds **190 cases** across 6 categories (`offline_sample` +
+the 8-paper `full_corpus`). **56 multi-hop cases deliberately require retrieving
 several documents at once** (each labels ≥2 `expected_sources`), stress-testing
-the "one question, many articles" path. A measured `offline_sample` run:
+the "one question, many articles" path. The table below is a **representative
+measured run** (a snapshot; the set keeps growing — re-run `run_eval` to refresh):
 
 | Metric | Result |
 |---|---|
@@ -195,7 +196,7 @@ Per category (recall / answer correctness):
 | no_answer | 5 | — | refusal 1.00 |
 
 > **Multi-document ("one question, many articles")** is the focus and the hardest
-> case: across 26 offline multi-hop questions (each needs ≥2 documents), **measured
+> case: across the offline multi-hop questions (each needs ≥2 documents), **measured
 > over the full 106-note corpus** — citation grounding **100%**, **hallucinated
 > citations 0**, answer correctness **96%**, retrieval recall **0.64** (it must
 > surface every passage a question needs, so recall is naturally lower). Growing
