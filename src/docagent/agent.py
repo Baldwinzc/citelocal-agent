@@ -263,10 +263,18 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
             *_recent_dialogue(state.get("messages", []) or []),
             {"role": "user", "content": intent_user_prompt.format(question=question)},
         ]
-        result = cast(IntentSchema, llm_router.invoke(router_messages))
+        try:
+            result = cast(IntentSchema, llm_router.invoke(router_messages))
+            classification, complexity = result.classification, result.complexity
+        except Exception as e:  # noqa: BLE001
+            # A malformed structured-output from the router must not crash the
+            # request; default to the simple in-scope path (the retrieval
+            # threshold still lets the agent decline if nothing is relevant).
+            logger.warning("intent router failed (%s); defaulting to in_scope/simple", e)
+            classification, complexity = "in_scope", "simple"
 
-        if result.classification == "in_scope":
-            if result.complexity == "complex":
+        if classification == "in_scope":
+            if complexity == "complex":
                 logger.info("intent: in_scope (complex) — multi-agent orchestrator")
                 return Command(
                     goto="orchestrator",

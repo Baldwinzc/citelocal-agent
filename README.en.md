@@ -187,14 +187,17 @@ Per category (recall / answer correctness):
 |---|---|---|---|
 | single_paper | 24 | 0.92 | 0.95 |
 | definitional | 16 | 1.00 | 1.00 |
-| multi_hop | 7 | 0.64 | 1.00 |
+| multi_hop | 26 | 0.64 | 0.95 |
 | numeric | 4 | 1.00 | 1.00 |
 | out_of_scope | 3 | — | refusal 1.00 |
 | no_answer | 5 | — | refusal 1.00 |
 
-> Multi-hop is the hardest — retrieval recall 0.64 (it must surface every passage
-> a question needs), yet answers and citations still came out correct. Numbers
-> depend on the answer model behind `LLM_MODEL`; re-run `run_eval` for your own.
+> **Multi-document ("one question, many articles")** is the focus and the hardest
+> case: across 26 offline multi-hop questions (each needs ≥2 documents), citation
+> grounding was **100%**, **hallucinated citations 0**, answer correctness **95%**,
+> with retrieval recall **0.64** (it must surface every passage a question needs,
+> so recall is naturally lower). Numbers depend on the answer model behind
+> `LLM_MODEL`; re-run `run_eval` for your own.
 
 ## Project layout
 

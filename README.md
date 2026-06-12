@@ -155,12 +155,12 @@ python -m docagent.eval.run_eval --split offline_sample --categories multi_hop
 |---|---|---|---|
 | single_paper | 24 | 0.92 | 0.95 |
 | definitional | 16 | 1.00 | 1.00 |
-| multi_hop | 7 | 0.64 | 1.00 |
+| multi_hop | 26 | 0.64 | 0.95 |
 | numeric | 4 | 1.00 | 1.00 |
 | out_of_scope | 3 | — | 拒答 1.00 |
 | no_answer | 5 | — | 拒答 1.00 |
 
-> 多跳最难 —— 检索召回 0.64(它要求同时命中一道题所需的每一段证据),但答案与引用仍然正确。数字取决于 `LLM_MODEL` 背后的回答模型;改了就重跑 `run_eval`。
+> **多文档(一问多文)**是重点也是最难的:26 道 offline 多跳题(每题需 ≥2 篇文档)实测 —— 引用接地 **100%**、**幻觉引用 0**、答案正确率 **95%**,检索召回 **0.64**(它要求同时命中一道题所需的每一段证据,所以召回天然偏低)。数字取决于 `LLM_MODEL` 背后的回答模型;改了就重跑 `run_eval`。
 
 ## 目录结构
 
