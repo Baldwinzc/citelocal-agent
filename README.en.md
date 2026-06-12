@@ -189,17 +189,20 @@ Per category (recall / answer correctness):
 |---|---|---|---|
 | single_paper | 24 | 0.92 | 0.95 |
 | definitional | 16 | 1.00 | 1.00 |
-| multi_hop | 26 | 0.64 | 0.95 |
+| multi_hop | 26 | 0.64 | 0.96 |
 | numeric | 4 | 1.00 | 1.00 |
 | out_of_scope | 3 | — | refusal 1.00 |
 | no_answer | 5 | — | refusal 1.00 |
 
 > **Multi-document ("one question, many articles")** is the focus and the hardest
-> case: across 26 offline multi-hop questions (each needs ≥2 documents), citation
-> grounding was **100%**, **hallucinated citations 0**, answer correctness **95%**,
-> with retrieval recall **0.64** (it must surface every passage a question needs,
-> so recall is naturally lower). Numbers depend on the answer model behind
-> `LLM_MODEL`; re-run `run_eval` for your own.
+> case: across 26 offline multi-hop questions (each needs ≥2 documents), **measured
+> over the full 106-note corpus** — citation grounding **100%**, **hallucinated
+> citations 0**, answer correctness **96%**, retrieval recall **0.64** (it must
+> surface every passage a question needs, so recall is naturally lower). Growing
+> the corpus from 9 to 106 notes left these essentially unchanged — hybrid
+> retrieval + reranking still recovers the right multiple sources among 100+
+> distractors. Numbers depend on the answer model behind `LLM_MODEL`; re-run
+> `run_eval` for your own.
 
 ## Project layout
 
