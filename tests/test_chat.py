@@ -15,15 +15,19 @@ import uuid
 import pytest
 from dotenv import load_dotenv
 
-from docagent.agent import get_chat_agent
+from docagent.agent import build_agent
 from docagent.utils import extract_outcome
 
 load_dotenv(override=True)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def agent():
-    return get_chat_agent()
+    # Fresh checkpointed agent per test (own InMemorySaver + LLM client), so
+    # threads don't share state and a closed client can't leak across tests.
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    return build_agent(checkpointer=InMemorySaver())
 
 
 def _thread():
@@ -49,10 +53,15 @@ def test_followup_resolves_against_prior_turn(agent):
     assert len(r2["messages"]) > len(r1["messages"])
 
 
+def _conversation_text(state) -> str:
+    return " ".join(getattr(m, "content", "") or "" for m in state["messages"])
+
+
 def test_threads_are_isolated(agent):
     ta, tb = _thread(), _thread()
     agent.invoke({"question_input": {"question": "What is RAG?"}}, config=ta)
     a2 = agent.invoke({"question_input": {"question": "What is BM25?"}}, config=ta)
     b1 = agent.invoke({"question_input": {"question": "What is attention?"}}, config=tb)
-    # thread A holds two turns; thread B holds one -> B didn't inherit A's history
-    assert len(a2["messages"]) > len(b1["messages"])
+    # thread A still carries its first turn; thread B never saw it
+    assert "RAG" in _conversation_text(a2)
+    assert "RAG" not in _conversation_text(b1)

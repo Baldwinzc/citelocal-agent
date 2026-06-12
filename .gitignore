@@ -70,3 +70,5 @@ papers/
 # eval: raw auto-generated QA candidates (regenerable) + machine-readable results
 src/docagent/eval/data/generated_raw.jsonl
 eval_results.json
+eval_offline.json
+eval_mh.json

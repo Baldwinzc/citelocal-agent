@@ -11,7 +11,7 @@ import argparse
 from dotenv import load_dotenv
 
 from docagent.agent import get_default_agent
-from docagent.configuration import Configuration
+from docagent.configuration import Configuration, llm_call_kwargs
 from docagent.logging_config import configure_logging
 from docagent.utils import extract_outcome
 
@@ -79,7 +79,7 @@ def main():
     if args.verify == "llm":
         from langchain.chat_models import init_chat_model
 
-        verify_llm = init_chat_model(cfg.llm_model, temperature=0.0)
+        verify_llm = init_chat_model(cfg.llm_model, temperature=0.0, **llm_call_kwargs())
 
     if args.trace:
         _print_trace(result)

@@ -29,7 +29,7 @@ from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 
 from docagent.agent import get_default_agent
-from docagent.configuration import DEFAULT_LLM_MODEL, DEFAULT_TOP_K
+from docagent.configuration import DEFAULT_LLM_MODEL, DEFAULT_TOP_K, llm_call_kwargs
 from docagent.eval.qa_dataset import CATEGORIES, load_qa_cases
 from docagent.logging_config import configure_logging
 from docagent.retriever import get_retriever
@@ -43,7 +43,7 @@ class Grade(BaseModel):
     justification: str = Field(description="Brief justification.")
 
 
-_judge = init_chat_model(DEFAULT_LLM_MODEL).with_structured_output(Grade)
+_judge = init_chat_model(DEFAULT_LLM_MODEL, **llm_call_kwargs()).with_structured_output(Grade)
 
 JUDGE_SYS = (
     "You grade a document-QA assistant's answer against a single criterion. "
@@ -81,7 +81,7 @@ def _blank_stats():
     return {
         "n": 0, "intent_c": 0, "intent_t": 0, "recalls": [],
         "ans_c": 0, "ans_t": 0, "cite_c": 0, "cite_t": 0,
-        "ref_c": 0, "ref_t": 0, "hallucinated": 0,
+        "ref_c": 0, "ref_t": 0, "hallucinated": 0, "errors": 0,
     }
 
 
@@ -144,13 +144,20 @@ def main():
             for b in buckets:
                 b["recalls"].append(recall)
 
-        result = agent.invoke({"question_input": {"question": q}})
-        o = extract_outcome(result)
-        intent, answer = o["intent"], o["answer"]
+        try:
+            result = agent.invoke({"question_input": {"question": q}})
+            o = extract_outcome(result)
+            answer_ok = _judge_answer(case["criteria"], q, o["answer"])
+        except Exception as e:  # noqa: BLE001 — a flaky provider call shouldn't abort the run
+            for b in buckets:
+                b["n"] += 1
+                b["errors"] += 1
+            print(f"{case['id']:<26}{cat:<14}ERROR: {str(e)[:50]}")
+            continue
+        intent = o["intent"]
         cited = {source_of(c).rsplit("/", 1)[-1] for c in o["citations"]}
 
         intent_ok = intent == exp_router
-        answer_ok = _judge_answer(case["criteria"], q, answer)
 
         cite_ok = None
         if exp_intent == "in_scope" and exp_sources:
@@ -194,6 +201,8 @@ def main():
     print(f"Citation grounding      : {pct(overall['cite_c'], overall['cite_t'])}")
     print(f"Refusal accuracy        : {pct(overall['ref_c'], overall['ref_t'])}")
     print(f"Hallucinated citations  : {overall['hallucinated']} (lower is better)")
+    if overall["errors"]:
+        print(f"Errored cases (skipped) : {overall['errors']}/{overall['n']}")
 
     print("\n=== BY CATEGORY ===")
     cat_header = f"{'category':<16}{'n':>4}{'intent':>9}{'recall':>9}{'answer':>9}{'citation':>10}{'refusal':>9}"

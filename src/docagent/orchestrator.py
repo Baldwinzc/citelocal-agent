@@ -16,6 +16,8 @@ combines the verified findings into ONE final ``Answer`` tool call, so
 ``agent``, so there is no import cycle.
 """
 
+import logging
+
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
@@ -28,6 +30,8 @@ from docagent.schemas import PlanSchema, State
 from docagent.tools import Answer
 from docagent.utils import extract_outcome
 from docagent.verify import verify_claims
+
+logger = logging.getLogger(__name__)
 
 MAX_SUB_QUESTIONS = 4
 
@@ -54,14 +58,21 @@ def build_orchestrator(
 
     def planner(state: State):
         question = state["question_input"].get("question", "")
-        plan = planner_llm.invoke(
-            [
-                {"role": "system", "content": planner_system_prompt},
-                {"role": "user", "content": planner_user_prompt.format(question=question)},
-            ]
-        )
-        subs = [s.strip() for s in plan.sub_questions if s and s.strip()] or [question]
-        subs = subs[:MAX_SUB_QUESTIONS]
+        try:
+            plan = planner_llm.invoke(
+                [
+                    {"role": "system", "content": planner_system_prompt},
+                    {"role": "user", "content": planner_user_prompt.format(question=question)},
+                ]
+            )
+            subs = [s.strip() for s in plan.sub_questions if s and s.strip()]
+        except Exception as e:  # noqa: BLE001
+            # A malformed structured-output from the planner (some models emit an
+            # invalid PlanSchema) must not crash the complex path — degrade to
+            # researching the original question as a single sub-question.
+            logger.warning("planner structured output failed (%s); using 1 sub-question", e)
+            subs = []
+        subs = (subs or [question])[:MAX_SUB_QUESTIONS]
         return {
             "sub_questions": subs,
             "trace": [{"step": "planner", "sub_questions": subs}],

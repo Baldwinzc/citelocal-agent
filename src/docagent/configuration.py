@@ -6,6 +6,7 @@ used by ingestion + retrieval; the ``Configuration`` dataclass exposes the same
 knobs to the LangGraph runtime via ``configurable``.
 """
 
+import json
 import os
 from dataclasses import dataclass, fields
 from typing import Any
@@ -42,6 +43,18 @@ DEFAULT_RRF_K = int(os.environ.get("RRF_K", "60"))
 # --- LLM (only the answer step may need a key) ---
 DEFAULT_LLM_MODEL = os.environ.get("LLM_MODEL", "openai:gpt-4.1")
 
+
+def llm_call_kwargs() -> dict:
+    """Extra constructor kwargs for the chat model, from the environment.
+
+    ``$LLM_EXTRA_BODY`` (a JSON object) is forwarded as ``extra_body`` to
+    OpenAI-compatible providers — an escape hatch for provider-specific request
+    fields (e.g. a reasoning/thinking toggle, sampling knobs some gateways expose)
+    without touching code. Empty for stock OpenAI, so the default path is unchanged.
+    """
+    raw = os.environ.get("LLM_EXTRA_BODY")
+    return {"extra_body": json.loads(raw)} if raw else {}
+
 # --- Graph execution budgets ---
 # ReAct loop steps for the retrieval loop: the simple path's response_agent AND
 # each researcher inside the orchestrator. The orchestrator's own
@@ -60,6 +73,21 @@ DEFAULT_ORCHESTRATOR_RECURSION_LIMIT = int(
 DEFAULT_ENTAILMENT_BACKEND = os.environ.get("ENTAILMENT_BACKEND", "off")
 # NLI cross-encoder for the "nli" backend. Labels: contradiction/entailment/neutral.
 DEFAULT_NLI_MODEL = os.environ.get("NLI_MODEL", "cross-encoder/nli-deberta-v3-base")
+
+
+def _coerce(value: Any, default: Any) -> Any:
+    """Coerce a (possibly string) override to the type of the field's default."""
+    if not isinstance(value, str):
+        return value
+    if isinstance(default, bool):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    if isinstance(default, int):
+        return int(value)
+    if isinstance(default, float):
+        return float(value)
+    if isinstance(default, dict):
+        return json.loads(value)
+    return value
 
 
 @dataclass(kw_only=True)
@@ -83,13 +111,20 @@ class Configuration:
     def from_runnable_config(
         cls, config: RunnableConfig | None = None
     ) -> "Configuration":
-        """Create a Configuration from env vars first, then ``configurable``."""
+        """Create a Configuration from env vars first, then ``configurable``.
+
+        Env vars arrive as strings, so values are coerced to each field's type
+        (e.g. ``RECURSION_LIMIT=20`` -> int 20, ``SCORE_THRESHOLD=0.5`` -> float).
+        """
         configurable = (
             config["configurable"] if config and "configurable" in config else {}
         )
-        values: dict[str, Any] = {
-            f.name: os.environ.get(f.name.upper(), configurable.get(f.name))
-            for f in fields(cls)
-            if f.init
-        }
-        return cls(**{k: v for k, v in values.items() if v})
+        values: dict[str, Any] = {}
+        for f in fields(cls):
+            if not f.init:
+                continue
+            raw = os.environ.get(f.name.upper(), configurable.get(f.name))
+            if raw is None or raw == "":
+                continue
+            values[f.name] = _coerce(raw, f.default)
+        return cls(**values)

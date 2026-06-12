@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 
-from docagent.agent import get_default_agent
+from docagent.agent import build_agent
 from docagent.configuration import DEFAULT_LLM_MODEL
 from docagent.eval.prompts import RESPONSE_CRITERIA_SYSTEM_PROMPT
 from docagent.eval.qa_dataset import load_qa_cases
@@ -41,9 +41,11 @@ def _in_scope_cases():
     ]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def agent():
-    return get_default_agent()
+    # Fresh agent per test (own LLM http client) — the cached singleton can be
+    # closed by pytest teardown and leak across test modules.
+    return build_agent()
 
 
 @pytest.mark.parametrize("question,name,criteria", _in_scope_cases())

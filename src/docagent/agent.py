@@ -33,7 +33,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
-from docagent.configuration import Configuration
+from docagent.configuration import Configuration, llm_call_kwargs
 from docagent.orchestrator import build_orchestrator
 from docagent.prompts import (
     AGENT_TOOLS_PROMPT,
@@ -186,7 +186,7 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
     retriever = get_retriever(config.chroma_path, config.collection_name)
     tools = make_retrieval_tools(retriever, config.top_k, config.score_threshold)
     tools_by_name = get_tools_by_name(tools)
-    llm = init_chat_model(config.llm_model, temperature=0.0)
+    llm = init_chat_model(config.llm_model, temperature=0.0, **llm_call_kwargs())
     llm_router = llm.with_structured_output(IntentSchema)
     llm_with_tools = llm.bind_tools(tools, tool_choice="any")
 
@@ -213,10 +213,22 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
         return _merge_subgraph_result(out, len(msgs))
 
     def orchestrator_node(state: State):
-        out = orchestrator.invoke(
-            state, config={"recursion_limit": config.orchestrator_recursion_limit}
-        )
-        return _merge_subgraph_result(out, len(state.get("messages", []) or []))
+        try:
+            out = orchestrator.invoke(
+                state, config={"recursion_limit": config.orchestrator_recursion_limit}
+            )
+            return _merge_subgraph_result(out, len(state.get("messages", []) or []))
+        except Exception as e:  # noqa: BLE001
+            # The complex path can fail in many ways (a model emitting malformed
+            # structured output, a researcher exhausting its step budget). Degrade
+            # to the simple retrieval loop rather than crashing the request.
+            logger.warning("orchestrator failed (%s); falling back to the simple path", e)
+            question = state["question_input"].get("question", "")
+            out = research_loop.invoke(
+                {"messages": [{"role": "user", "content": question}]},
+                config={"recursion_limit": config.recursion_limit},
+            )
+            return _merge_subgraph_result(out, 1)
 
     def intent_router(
         state: State,
