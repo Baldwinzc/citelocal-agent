@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en" class="h-full">
+<html lang="zh" class="h-full">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>docagent — ask your documents</title>
+  <title>docagent — 向你的文档提问</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
@@ -20,36 +20,36 @@
     <header class="flex items-center justify-between border-b border-zinc-200 py-4">
       <div>
         <h1 class="text-lg font-semibold tracking-tight">docagent</h1>
-        <p class="text-sm text-zinc-500">Chat with your papers · page-precise, verified citations · fully local</p>
+        <p class="text-sm text-zinc-500">与你的论文 / 文档对话 · 精确到页 / 行的可核验引用 · 全本地</p>
       </div>
-      <div id="kb" class="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-600">loading KB…</div>
+      <div id="kb" class="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-600">正在加载知识库…</div>
     </header>
 
     <main id="messages" class="flex-1 space-y-4 overflow-y-auto py-6">
       <div class="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <p class="text-sm text-zinc-600">Ask a question about your papers / documents. Try one:</p>
+        <p class="text-sm text-zinc-600">就你的论文 / 文档提问。试试这些:</p>
         <div id="examples" class="mt-3 flex flex-wrap gap-2"></div>
       </div>
     </main>
 
     <footer class="border-t border-zinc-200 py-4">
       <form id="form" class="flex items-end gap-2">
-        <textarea id="q" rows="1" placeholder="Ask about your papers…"
+        <textarea id="q" rows="1" placeholder="就你的论文 / 文档提问…"
           class="max-h-40 flex-1 resize-none rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm shadow-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"></textarea>
         <button id="send" type="submit"
-          class="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-40">Ask</button>
+          class="rounded-xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-40">提问</button>
       </form>
-      <p class="mt-2 text-center text-xs text-zinc-400">docagent · hybrid retrieval + cross-encoder rerank · verified citations</p>
+      <p class="mt-2 text-center text-xs text-zinc-400">docagent · 混合检索 + 交叉编码器重排 · 可核验引用</p>
     </footer>
   </div>
 
   <script>
     const EXAMPLES = [
-      "What is scaled dot-product attention?",
-      "How does RAG combine a retriever with a generator?",
-      "How is BERT related to the Transformer architecture?",
-      "What pre-training objectives does BERT use?",
-      "What is the capital of France?",
+      "什么是缩放点积注意力(scaled dot-product attention)?",
+      "RAG 如何把检索器和生成器结合起来?",
+      "BERT 与 Transformer 架构是什么关系?",
+      "BERT 使用了哪些预训练目标?",
+      "法国的首都是哪里?",
     ];
     const $messages = document.getElementById("messages");
     const $form = document.getElementById("form");
@@ -57,8 +57,8 @@
     const $send = document.getElementById("send");
 
     fetch("/api/sources").then(r => r.json()).then(d => {
-      document.getElementById("kb").textContent = (d.sources?.length ?? 0) + " documents";
-    }).catch(() => { document.getElementById("kb").textContent = "KB unavailable"; });
+      document.getElementById("kb").textContent = (d.sources?.length ?? 0) + " 篇文档";
+    }).catch(() => { document.getElementById("kb").textContent = "知识库不可用"; });
 
     const $ex = document.getElementById("examples");
     EXAMPLES.forEach(text => {
@@ -84,13 +84,13 @@
     function card(data) {
       if (data.kind === "question") {
         return el(`<div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
-          <div class="mb-2"><span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">needs clarification</span></div>
+          <div class="mb-2"><span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">需要澄清</span></div>
           <div class="text-sm text-zinc-800">${escape(data.question || "")}</div></div>`);
       }
       const inScope = data.intent === "in_scope";
       const badge = inScope
-        ? `<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">in scope</span>`
-        : `<span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">out of scope</span>`;
+        ? `<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">在范围内</span>`
+        : `<span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">超出范围</span>`;
 
       // markdown -> highlight inline locators -> SANITIZE (defends against
       // HTML/script injection coming from document content via the answer).
@@ -101,17 +101,17 @@
 
       const cites = (data.citations || []).map(c => chip(c, "bg-zinc-100 text-zinc-700")).join(" ");
       const citeBlock = cites
-        ? `<div class="mt-3 border-t border-zinc-100 pt-3"><div class="mb-1.5 text-xs font-medium text-zinc-400">Citations (verified)</div><div class="flex flex-wrap gap-1.5">${cites}</div></div>`
+        ? `<div class="mt-3 border-t border-zinc-100 pt-3"><div class="mb-1.5 text-xs font-medium text-zinc-400">引用(已核验)</div><div class="flex flex-wrap gap-1.5">${cites}</div></div>`
         : "";
 
       const unsup = (data.unsupported || []).map(c => chip(c, "bg-red-50 text-red-600 line-through")).join(" ");
       const unsupBlock = unsup
-        ? `<div class="mt-3 border-t border-zinc-100 pt-3"><div class="mb-1.5 text-xs font-medium text-red-400">Dropped — not actually retrieved</div><div class="flex flex-wrap gap-1.5">${unsup}</div></div>`
+        ? `<div class="mt-3 border-t border-zinc-100 pt-3"><div class="mb-1.5 text-xs font-medium text-red-400">已丢弃 —— 实际未检索到</div><div class="flex flex-wrap gap-1.5">${unsup}</div></div>`
         : "";
 
       const steps = (data.trace || []).filter(t => t.step === "search_docs");
       const traceBlock = steps.length
-        ? `<details class="mt-3 border-t border-zinc-100 pt-3"><summary class="cursor-pointer text-xs font-medium text-zinc-400">Retrieval trace · ${steps.length} search${steps.length>1?"es":""}</summary>
+        ? `<details class="mt-3 border-t border-zinc-100 pt-3"><summary class="cursor-pointer text-xs font-medium text-zinc-400">检索轨迹 · ${steps.length} 次检索</summary>
            <ol class="mt-2 space-y-1 text-xs text-zinc-500">${steps.map((s,i)=>`<li>${i+1}. <span class="font-mono">${escape(s.query||"")}</span></li>`).join("")}</ol></details>`
         : "";
 
@@ -138,7 +138,7 @@
         const data = await r.json();
         loading.replaceWith(card(data));
       } catch (e) {
-        loading.replaceWith(el(`<div class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">Request failed: ${escape(String(e))}</div>`));
+        loading.replaceWith(el(`<div class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">请求失败: ${escape(String(e))}</div>`));
       } finally {
         $send.disabled = false;
         scroll();
@@ -148,20 +148,20 @@
     $form.addEventListener("submit", e => { e.preventDefault(); ask(); });
     $q.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } });
 
-    // ?demo — render one real sample exchange (offline preview / screenshots)
+    // ?demo — 渲染一段真实的示例问答(离线预览 / 截图用)
     if (new URLSearchParams(location.search).has("demo")) {
       const DEMO = {
         kind: "answer", intent: "in_scope",
-        answer: "RAG uses a retriever to access a dense vector index; the retriever provides latent documents conditioned on the input, and the model marginalizes over seq2seq predictions given the different retrieved documents [retrieval-augmented-generation.pdf (p.1)]. BERT is related to the Transformer because it is a multi-layer **bidirectional Transformer encoder**, built on the original Transformer architecture [bert.pdf (p.1)].",
+        answer: "RAG 使用检索器访问一个稠密向量索引:检索器根据输入提供若干潜在文档,模型在给定不同检索文档的条件下对 seq2seq 预测做边缘化 [retrieval-augmented-generation.pdf (p.1)]。BERT 与 Transformer 的关系在于:它本身就是一个多层**双向 Transformer 编码器**,构建在原始 Transformer 架构之上 [bert.pdf (p.1)]。",
         citations: ["retrieval-augmented-generation.pdf (p.1)", "bert.pdf (p.1)", "bert.pdf (p.3)"],
         unsupported: [],
         trace: [
-          { step: "search_docs", query: "retrieval-augmented generation retriever BERT Transformer architecture" },
+          { step: "search_docs", query: "检索增强生成 检索器 BERT Transformer 架构" },
           { step: "list_sources" },
-          { step: "search_docs", query: "BERT bidirectional Transformer encoder layers" },
+          { step: "search_docs", query: "BERT 双向 Transformer 编码器 层数" },
         ],
       };
-      $messages.appendChild(userBubble("How does retrieval-augmented generation use a retriever, and how is BERT related to the Transformer?"));
+      $messages.appendChild(userBubble("检索增强生成(RAG)如何使用检索器,BERT 与 Transformer 又是什么关系?"));
       $messages.appendChild(card(DEMO));
       scroll();
     }

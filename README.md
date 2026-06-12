@@ -166,22 +166,33 @@ python -m docagent.eval.run_eval --split offline_sample --categories multi_hop
 per-category view is what lets a change prove it actually helps, e.g. multi-hop),
 and writes a machine-readable `eval_results.json` baseline for tracking deltas.
 
-The curated set currently holds **~90 cases** across 6 categories, over 5 bundled
-sample notes (`offline_sample`) and 8 demo papers (`full_corpus`). The numbers
-below are the **historical 3-paper / 8-case baseline** — re-run `run_eval` to get
-the per-category table for the current set:
+The curated set holds **~90 cases** across 6 categories, over 5 bundled sample
+notes (`offline_sample`) and 8 demo papers (`full_corpus`). Latest `offline_sample`
+run (59 cases):
 
 | Metric | Result |
 |---|---|
-| Intent routing accuracy | **8/8 (100%)** |
-| Retrieval recall (mean) | **0.92** |
-| Answer correctness (LLM-judged) | **6/6 (100%)** |
-| Citation grounding | **6/6 (100%)** |
+| Intent routing accuracy | **100%** (53/53) |
+| Retrieval recall (mean) | **0.91** |
+| Answer correctness (LLM-judged) | **98%** (44/45) |
+| Citation grounding | **100%** (45/45) |
 | Hallucinated citations | **0** |
-| Refusal accuracy | **2/2 (100%)** |
+| Refusal accuracy | **100%** (8/8) |
 
-> The hardest case is multi-hop — recall 0.50 on the one question that needs two
-> papers at once, though its answer/citation still came out correct.
+Per category (recall / answer correctness):
+
+| Category | n | recall | answer |
+|---|---|---|---|
+| single_paper | 24 | 0.92 | 0.95 |
+| definitional | 16 | 1.00 | 1.00 |
+| multi_hop | 7 | 0.64 | 1.00 |
+| numeric | 4 | 1.00 | 1.00 |
+| out_of_scope | 3 | — | refusal 1.00 |
+| no_answer | 5 | — | refusal 1.00 |
+
+> Multi-hop is the hardest — retrieval recall 0.64 (it must surface every passage
+> a question needs), yet answers and citations still came out correct. Numbers
+> depend on the answer model behind `LLM_MODEL`; re-run `run_eval` for your own.
 
 ## Limitations
 
