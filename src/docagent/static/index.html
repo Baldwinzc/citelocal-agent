@@ -56,6 +56,11 @@
     const $q = document.getElementById("q");
     const $send = document.getElementById("send");
 
+    // One conversation thread per page load, so follow-up questions resolve
+    // against earlier turns (server keys multi-turn memory by session_id).
+    const SESSION = (crypto.randomUUID && crypto.randomUUID()) ||
+      String(Date.now()) + Math.random().toString(16).slice(2);
+
     fetch("/api/sources").then(r => r.json()).then(d => {
       document.getElementById("kb").textContent = (d.sources?.length ?? 0) + " 篇文档";
     }).catch(() => { document.getElementById("kb").textContent = "知识库不可用"; });
@@ -133,7 +138,7 @@
       try {
         const r = await fetch("/api/ask", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question }),
+          body: JSON.stringify({ question, session_id: SESSION }),
         });
         const data = await r.json();
         loading.replaceWith(card(data));
