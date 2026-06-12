@@ -217,8 +217,11 @@ python tests/run_all_tests.py          # offline retrieval tests (no API key)
 python tests/run_all_tests.py --all    # + LLM end-to-end (needs key + ingested papers)
 ```
 
-CI runs ruff, offline unit tests (no network/model), retrieval tests over
+CI runs ruff, mypy, offline unit tests (no network/model), retrieval tests over
 `sample_notes`, and a wheel-packages-the-UI smoke test.
+
+Problems hit during development / wiring real models / evaluation, and how they
+were solved: see [engineering notes](docs/engineering-notes.md).
 
 ## Configuration
 

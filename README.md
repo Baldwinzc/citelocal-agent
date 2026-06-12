@@ -185,7 +185,9 @@ python tests/run_all_tests.py          # 离线检索测试（无需 key）
 python tests/run_all_tests.py --all    # + LLM 端到端（需 key + 已 ingest 论文）
 ```
 
-CI 跑 ruff、离线单测(无网络/模型)、`sample_notes` 上的检索测试、以及「wheel 是否打包 UI」冒烟。
+CI 跑 ruff、mypy、离线单测(无网络/模型)、`sample_notes` 上的检索测试、以及「wheel 是否打包 UI」冒烟。
+
+开发 / 接入真实模型 / 评测过程中的问题与解决方案,见 [工程踩坑记录](docs/engineering-notes.md)。
 
 ## 配置
 
