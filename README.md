@@ -1,6 +1,6 @@
 # docagent — 本地论文研究助手
 
-[English](README.md) | **中文**
+**中文** | [English](README.en.md)
 
 针对一堆论文(或任意本地文档)提问,得到**精确到页码、且经过校验的引用**答案 —— **全程在本机运行**。基于 [LangGraph](https://langchain-ai.github.io/langgraph/)。
 

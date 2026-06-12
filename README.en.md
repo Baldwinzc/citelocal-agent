@@ -1,6 +1,6 @@
 # docagent — chat with your papers, fully local
 
-**English** | [中文](README.zh-CN.md)
+[中文](README.md) | **English**
 
 Ask questions across a pile of papers (or any local docs) and get answers with
 **page-precise, verified citations** — running **entirely on your machine**. Built
