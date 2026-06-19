@@ -212,8 +212,9 @@ Per category:
 > — it occasionally invents a locator for something the docs don't cover, which is
 > the next gap for citation verification to close; (2) 1 of 5 out_of_scope questions
 > is mis-routed as in_scope (intent 0.80, small n); (3) refusal accuracy is 0.89–0.93,
-> not perfect — boundary cases still slip through. These go into the failure-case
-> backlog to be reproduced and fixed one by one. Numbers depend on `LLM_MODEL`.
+> not perfect — boundary cases still slip through. These, together with the 35
+> retrieval-recall misses, are catalogued in the [failure-case backlog](docs/failure-cases.md)
+> to be reproduced and fixed one by one. Numbers depend on `LLM_MODEL`.
 
 ## Project layout
 
