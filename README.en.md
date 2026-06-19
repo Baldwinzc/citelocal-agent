@@ -172,38 +172,48 @@ RAG, agents, and evaluation — a larger, harder-to-discriminate retrieval corpu
 The curated eval set holds **190 cases** across 6 categories (`offline_sample` +
 the 8-paper `full_corpus`). **56 multi-hop cases deliberately require retrieving
 several documents at once** (each labels ≥2 `expected_sources`), stress-testing
-the "one question, many articles" path. The table below is a **representative
-measured run** (a snapshot; the set keeps growing — re-run `run_eval` to refresh):
+the "one question, many articles" path. The table below is a **full measured run**:
+all **159 `offline_sample` cases** over the repo's bundled **106 `sample_notes/`**,
+with **`gpt-5.4-mini`** (via an OpenAI-compatible gateway) as both the answer and
+judge model. Numbers move with the model/corpus — swap `LLM_MODEL` and re-run
+`run_eval --split offline_sample` to reproduce. (The 31 `full_corpus` cases need the
+8 demo papers downloaded first and are not included here.)
 
 | Metric | Result |
 |---|---|
-| Intent routing accuracy | **100%** (53/53) |
-| Retrieval recall (mean) | **0.91** |
-| Answer correctness (LLM-judged) | **98%** (44/45) |
-| Citation grounding | **100%** (45/45) |
-| Hallucinated citations | **0** |
-| Refusal accuracy | **100%** (8/8) |
+| Intent routing accuracy | **99%** (158/159) |
+| Retrieval recall (mean) | **0.86** |
+| Answer correctness (LLM-judged) | **97%** (141/145) |
+| Citation grounding | **94%** (137/145) |
+| Refusal accuracy | **93%** (13/14) |
+| Hallucinated citations | **4** — all on questions it *should* refuse (no_answer 3 + out_of_scope 1) |
 
-Per category (recall / answer correctness):
+Per category:
 
-| Category | n | recall | answer |
-|---|---|---|---|
-| single_paper | 24 | 0.92 | 0.95 |
-| definitional | 16 | 1.00 | 1.00 |
-| multi_hop | 26 | 0.64 | 0.96 |
-| numeric | 4 | 1.00 | 1.00 |
-| out_of_scope | 3 | — | refusal 1.00 |
-| no_answer | 5 | — | refusal 1.00 |
+| Category | n | intent | recall | answer | grounding | refusal |
+|---|---|---|---|---|---|---|
+| single_paper | 41 | 1.00 | 0.95 | 1.00 | 0.95 | — |
+| definitional | 43 | 1.00 | 0.93 | 0.98 | 0.88 | — |
+| multi_hop | 54 | 1.00 | 0.70 | 0.94 | 0.98 | — |
+| numeric | 7 | 1.00 | 1.00 | 1.00 | 1.00 | — |
+| out_of_scope | 5 | 0.80 | — | — | — | 1.00 |
+| no_answer | 9 | 1.00 | — | — | — | 0.89 |
 
 > **Multi-document ("one question, many articles")** is the focus and the hardest
-> case: across the offline multi-hop questions (each needs ≥2 documents), **measured
-> over the full 106-note corpus** — citation grounding **100%**, **hallucinated
-> citations 0**, answer correctness **96%**, retrieval recall **0.64** (it must
-> surface every passage a question needs, so recall is naturally lower). Growing
-> the corpus from 9 to 106 notes left these essentially unchanged — hybrid
-> retrieval + reranking still recovers the right multiple sources among 100+
-> distractors. Numbers depend on the answer model behind `LLM_MODEL`; re-run
-> `run_eval` for your own.
+> case: across the **54 multi-hop questions** (each needs ≥2 documents) — citation
+> grounding **0.98**, **0 hallucinated citations in this category**, answer
+> correctness **0.94**, retrieval recall **0.70** (strict all-of: it must surface
+> *every* passage a question needs, not the looser any-of recall@k, so the number is
+> naturally lower and not directly comparable to looser reports). Multi-hop recall
+> remains the weakest cell in the table and the main thing to push on next.
+
+> **Known weak spots (failure cases, recorded honestly):** (1) all 4 hallucinated
+> citations land on questions the system *should* refuse (no_answer / out_of_scope)
+> — it occasionally invents a locator for something the docs don't cover, which is
+> the next gap for citation verification to close; (2) 1 of 5 out_of_scope questions
+> is mis-routed as in_scope (intent 0.80, small n); (3) refusal accuracy is 0.89–0.93,
+> not perfect — boundary cases still slip through. These go into the failure-case
+> backlog to be reproduced and fixed one by one. Numbers depend on `LLM_MODEL`.
 
 ## Project layout
 
