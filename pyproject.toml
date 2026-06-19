@@ -13,8 +13,8 @@ dependencies = [
     "langgraph>=1.0.0",
     "chromadb>=0.5.0",
     "sentence-transformers>=3.0.0",
-    "bm25s>=0.2.0",
-    "rank-bm25>=0.2.2",
+    "bm25s>=0.2.0",       # persistent, memory-mapped sparse index (scalable path, 100k+ chunks)
+    "rank-bm25>=0.2.2",   # in-RAM BM25Okapi fallback for small/throwaway or pre-sparse-index stores
     "pypdf>=4.0.0",
     "python-dotenv",
     "fastapi>=0.110.0",
