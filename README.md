@@ -180,7 +180,7 @@ src/citelocal_agent/
 ├── tools/              # make_retrieval_tools + make_web_tools(可选); Answer, Question
 ├── utils.py            # extract_outcome()：引用校验
 └── eval/               # data/qa_cases.jsonl(数据集) + qa_dataset.py(加载器) + run_eval.py
-scripts/                # fetch_arxiv.py · generate_qa.py · check_retrieval.py · calibrate_threshold.py
+scripts/                # fetch_arxiv.py · generate_qa.py · check_retrieval.py · calibrate_threshold.py · rerank_bakeoff.py
 sample_notes/           # 内置离线语料（CI / 快速试，无需下载）
 tests/                  # test_unit.py（离线）+ test_retrieval.py + test_response.py
 ```

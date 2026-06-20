@@ -240,7 +240,7 @@ src/citelocal_agent/
 ├── tools/              # make_retrieval_tools(retriever, cfg); Answer, Question
 ├── utils.py            # extract_outcome(): citation verification
 └── eval/               # data/qa_cases.jsonl (dataset) + qa_dataset.py (loader) + run_eval.py
-scripts/                # fetch_arxiv.py · generate_qa.py · check_retrieval.py · calibrate_threshold.py
+scripts/                # fetch_arxiv.py · generate_qa.py · check_retrieval.py · calibrate_threshold.py · rerank_bakeoff.py
 sample_notes/           # bundled offline corpus (CI / quick try; no download)
 tests/                  # test_unit.py (offline) + test_retrieval.py + test_response.py
 ```
