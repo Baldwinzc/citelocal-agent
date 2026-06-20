@@ -31,6 +31,11 @@ def kb(request, tmp_path_factory):
     ``persistent`` builds the bm25s index, which the retriever memory-maps at
     query time (the production path); ``fallback`` skips it so the retriever
     builds BM25 in memory. Every retrieval test below thus runs on both.
+
+    The reranker is pinned to the small ms-marco model (not the production default
+    bge-reranker-v2-m3) so the suite stays fast/offline in CI and tests retrieval
+    *logic* independent of which reranker ships. Model quality lives in the
+    bake-off (scripts/rerank_bakeoff.py), not here.
     """
     chroma_path = str(tmp_path_factory.mktemp("chroma"))
     docs = load_documents(NOTES)
@@ -47,7 +52,11 @@ def kb(request, tmp_path_factory):
             data.get("documents", []) or [],
             [(m or {}).get("source", "unknown") for m in metas],
         )
-    return HybridRetriever(persist_directory=chroma_path, collection_name="test_kb")
+    return HybridRetriever(
+        persist_directory=chroma_path,
+        collection_name="test_kb",
+        reranker_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+    )
 
 
 def test_num_chunks_and_sources(kb):
@@ -81,12 +90,15 @@ def test_gate_protects_abstention_even_with_loose_support(kb):
 
 def test_support_threshold_admits_supporting_chunks_after_gate(kb):
     # Once the gate is open (in-scope), a looser support_threshold admits further,
-    # mildly-negative supporting chunks the strict gate alone would drop.
+    # lower-scored supporting chunks the gate alone would drop. Scale-agnostic: use
+    # the top score as the gate so only the strongest chunk passes "strict".
     q = "what is scaled dot-product attention"
-    strict = kb.search(q, k=6, support_threshold=0.0)        # gate only (>= 0.0)
-    loose = kb.search(q, k=6, support_threshold=-100.0)       # admit down to -100
-    assert loose and loose[0].score >= 0.0                    # gate opened
-    assert all(h.score >= 0.0 for h in strict)                # strict keeps only >= gate
-    assert len(loose) >= len(strict)                          # loosening never removes
+    ranked = kb.search(q, k=8, score_threshold=float("-inf"), support_threshold=float("-inf"))
+    assert ranked, "expected hits"
+    gate = ranked[0].score
+    strict = kb.search(q, k=8, score_threshold=gate, support_threshold=gate)
+    loose = kb.search(q, k=8, score_threshold=gate, support_threshold=float("-inf"))
+    assert all(h.score >= gate for h in strict)               # strict keeps only >= gate
+    assert len(loose) >= len(strict) >= 1                     # loosening never removes
     if len(loose) > len(strict):                              # extras are sub-gate
-        assert any(h.score < 0.0 for h in loose)
+        assert any(h.score < gate for h in loose)

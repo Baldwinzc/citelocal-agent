@@ -1,6 +1,6 @@
 # Reranker 选型实验
 
-把「换哪个 cross-encoder reranker」当成一项可复现、可比较的工程决策来做,而不是凭感觉换模型。结论:**bge-reranker-base 是当前最佳候选,但尚未定型**(见末尾)。
+把「换哪个 cross-encoder reranker」当成一项可复现、可比较的工程决策来做,而不是凭感觉换模型。**结论:已定型 `bge-reranker-v2-m3`**(按「结果优先」取排序最强档;延迟列为后期优化项。详见末尾)。
 
 ## 背景
 
@@ -36,14 +36,18 @@
 - **拒答不受损**:bge 两款 AUC(0.97)略优于现状(0.95),换模型后仍能校准出干净阈值。
 - **增益温和且只在多跳**:单源/定义已满,提升空间全在多跳的 +0.03~0.05。叠加阈值过滤与「agent 已靠编排拆解把端到端覆盖做到 0.87」,落到头牌指标的实际收益会更小。
 
-## 推荐与「定型」前置条件(决策待定)
+## 定型:`BAAI/bge-reranker-v2-m3`(已采纳)
 
-**候选:`BAAI/bge-reranker-base`**——质量/拒答/延迟综合最优;若追求极致多跳且能忍 3× 延迟,再考虑 `bge-reranker-v2-m3`。
+决策口径为「结果优先,延迟后期再优化」,故取排序最强的 **`bge-reranker-v2-m3`**(而非性价比档 bge-base)。已落地为默认 `RERANKER_MODEL`,完成两步定型前置:
 
-**尚未定型。** 真正切换默认 `RERANKER_MODEL` 前必须:
+1. **重校准阈值(已完成)**:bge 输出 ≈[0,1] sigmoid。用 [`scripts/calibrate_threshold.py`](../scripts/calibrate_threshold.py)(已 generalize 成按分数自动定 sweep 范围)在 offline_sample 上重校:in_scope top 分 ~0.14–0.99、refuse ~0.00–0.05(两个 topically-near 的 no_answer 离群 0.52/0.86)。
+   - `SCORE_THRESHOLD = 0.2`(闸门):recall ~0.99、abstain ~0.86(拒答泄漏 2/14,与旧模型持平)。脚本按 `f1+abstain` 的 argmax 是 ~0.525,但那会错误拒答 ~10% 可答题,**故人工选 0.2 保 recall**。
+   - `SUPPORT_THRESHOLD = 0.0`:闸门开后纳入任意 >0 分 chunk;sweep 显示多跳单次召回随 support 降而升,0.0 时达 0.889,**泄漏全程 2/14 不变**。
+2. **全量 LLM 验收(已完成,159 条 / gpt-5.4-mini)**:相对换前(ms-marco)——单次召回 0.89→**0.94**、端到端覆盖 0.95→**0.97**、多跳召回 0.80→**0.89**、多跳覆盖 0.87→**0.92**、答案 97→**99%**,**拒答 13/14 不变、幻觉 1**(在带内)。单源/定义召回升到 0.98。
+   - **代价/观察**:引用接地总体 93→92(噪声级);definitional 0.91→0.84、numeric 0.71(n=7,波动大)。疑因 `SUPPORT_THRESHOLD=0` 较激进、纳入弱 chunk 稀释引用——若在意可上调 support 到 ~0.05(多跳 0.889→0.861 的小幅让步)。
 
-1. **重校准阈值**:bge 输出 ≈[0,1] sigmoid,而非 ms-marco 的宽 logit。`SCORE_THRESHOLD`(拒答闸门)需重跑 [`scripts/calibrate_threshold.py`](../scripts/calibrate_threshold.py),`SUPPORT_THRESHOLD` 需重新 sweep。
-2. **全量 LLM 验收**:`run_eval --split offline_sample` 确认多跳单次召回/端到端覆盖上升,且**拒答准确率、幻觉引用不恶化**。
-3. **权衡 CPU 延迟**:bge-base 每次检索 ~377ms(现状 ~104ms),交互式与批量评估都会变慢——按部署环境(有无 GPU)再定。
+### 延迟(后期优化项,已知)
 
-> 本实验只测**排序质量**;头牌的单次召回是检索子系统诊断指标,agent 端到端覆盖(已 0.87)才是系统真实表现。换 reranker 同时抬两者,但幅度温和。
+bge-v2-m3 在本机 CPU ~1144ms/检索(ms-marco ~104ms),交互与批量评估都更慢。按「结果优先」暂接受;后期优化方向:GPU 推理、换 bge-base(~377ms,质量略降)、或两段式重排。**单测已把 reranker 钉在小模型**,故 CI 不受拖累(测的是检索逻辑,非模型质量)。
+
+> 本实验只测**排序质量**;头牌的单次召回是检索子系统诊断指标,agent 端到端覆盖才是系统真实表现。复现:`python scripts/rerank_bakeoff.py --split offline_sample`。

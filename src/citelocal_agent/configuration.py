@@ -26,24 +26,29 @@ DEFAULT_CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "150"))
 DEFAULT_TOP_K = int(os.environ.get("TOP_K", "4"))
 # How many candidates each retriever (dense + BM25) contributes before fusion.
 DEFAULT_CANDIDATE_K = int(os.environ.get("CANDIDATE_K", "20"))
-# Cross-encoder used to re-rank fused candidates.
+# Cross-encoder used to re-rank fused candidates. Selected via a documented
+# bake-off (docs/reranker-selection.md, scripts/rerank_bakeoff.py): bge-reranker-v2-m3
+# tops multi-hop ranking. Its scores are ~[0,1] (sigmoid), NOT ms-marco's wide
+# logits — so SCORE_THRESHOLD / SUPPORT_THRESHOLD below are calibrated for this scale.
 DEFAULT_RERANKER_MODEL = os.environ.get(
-    "RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    "RERANKER_MODEL", "BAAI/bge-reranker-v2-m3"
 )
-# Minimum cross-encoder relevance score (a logit) to keep a chunk. Chunks below
-# this are dropped, which is what lets the agent honestly say "not in the docs".
-# Calibrated with scripts/calibrate_threshold.py: on the validation set in/out-of
-# -scope rerank scores are well separated (in-scope ~2.6–7.2, out-of-scope ~ -11),
-# so any threshold in [-2.5, 2.5] gives precision/recall/abstention = 1.0; 0.0 is
-# a safe midpoint. Re-run the calibration script if you change corpus/reranker.
-DEFAULT_SCORE_THRESHOLD = float(os.environ.get("SCORE_THRESHOLD", "0.0"))
-# Looser bar for admitting *supporting* chunks AFTER the strict threshold gate has
-# opened (i.e. at least one chunk cleared SCORE_THRESHOLD, so the question is
-# in-scope). Recovers multi-hop second sources the reranker scores mildly negative,
-# without weakening abstention — the strict gate alone decides whether anything is
-# returned at all. Clamped to <= SCORE_THRESHOLD in search(). Set equal to
-# SCORE_THRESHOLD to disable (restores single-threshold behaviour).
-DEFAULT_SUPPORT_THRESHOLD = float(os.environ.get("SUPPORT_THRESHOLD", "-2.5"))
+# Abstention GATE: the top chunk must clear this for search() to return anything,
+# which is what lets the agent honestly say "not in the docs". bge-reranker-v2-m3
+# scores are ~[0,1] (sigmoid), NOT ms-marco logits. Calibrated with
+# scripts/calibrate_threshold.py on offline_sample: in-scope top scores run ~0.14–0.99,
+# refuse ~0.00–0.05 (two topically-near no_answer outliers at 0.52 / 0.86). 0.2 keeps
+# answer recall ~0.99 while abstaining on ~0.86 of refuse cases (matching the prior
+# model); pushing higher (the f1+abstain argmax was ~0.525) wrongly refuses ~10% of
+# answerable questions. Re-run the calibration script if you change corpus/reranker.
+DEFAULT_SCORE_THRESHOLD = float(os.environ.get("SCORE_THRESHOLD", "0.2"))
+# Looser bar for admitting *supporting* chunks AFTER the gate has opened (question is
+# in-scope). Recovers multi-hop second sources the reranker scores low, without
+# weakening abstention — the gate alone decides whether anything is returned. Clamped
+# to <= SCORE_THRESHOLD in search(). 0.0 admits any non-zero-scored chunk into the
+# top-k once answering; on offline_sample this lifts multi-hop single-shot recall to
+# 0.79 -> 0.89 with refusal-leak unchanged. Set equal to SCORE_THRESHOLD to disable.
+DEFAULT_SUPPORT_THRESHOLD = float(os.environ.get("SUPPORT_THRESHOLD", "0.0"))
 # RRF constant for reciprocal-rank fusion.
 DEFAULT_RRF_K = int(os.environ.get("RRF_K", "60"))
 
