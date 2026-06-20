@@ -31,6 +31,7 @@ from citelocal_agent.configuration import (
     DEFAULT_RERANKER_MODEL,
     DEFAULT_RRF_K,
     DEFAULT_SCORE_THRESHOLD,
+    DEFAULT_SUPPORT_THRESHOLD,
     DEFAULT_TOP_K,
 )
 from citelocal_agent.vectorstore import get_vectorstore
@@ -180,6 +181,7 @@ class HybridRetriever:
         candidate_k: int = DEFAULT_CANDIDATE_K,
         score_threshold: float = DEFAULT_SCORE_THRESHOLD,
         rrf_k: int = DEFAULT_RRF_K,
+        support_threshold: float = DEFAULT_SUPPORT_THRESHOLD,
     ) -> List[RetrievedChunk]:
         if self.is_empty:
             return []
@@ -198,9 +200,19 @@ class HybridRetriever:
         scores = self._reranker.predict(pairs)  # type: ignore[arg-type]
         ranked = sorted(zip(fused, scores), key=lambda x: float(x[1]), reverse=True)
 
+        # Two-threshold selection. The strict `score_threshold` is the abstention
+        # GATE: unless the top chunk clears it, return nothing (the agent then says
+        # "not in the docs"). Once the gate is open the question is in-scope, so we
+        # admit *supporting* chunks down to the looser `support_threshold` — this is
+        # what lets a multi-hop second source the reranker scored mildly negative in
+        # (it never widens abstention, since the gate alone decides empty-vs-not).
+        if not ranked or float(ranked[0][1]) < score_threshold:
+            return []
+        admit = min(support_threshold, score_threshold)  # never stricter than gate
+
         out: List[RetrievedChunk] = []
         for cid, score in ranked:
-            if float(score) < score_threshold:
+            if float(score) < admit:
                 continue
             text, meta = by_id[cid]
             out.append(

@@ -71,3 +71,22 @@ def test_hybrid_retrieval_bm25_keyword(kb):
 def test_threshold_filters_out_of_scope(kb):
     hits = kb.search("what is the capital of France", k=3)
     assert hits == []
+
+
+def test_gate_protects_abstention_even_with_loose_support(kb):
+    # The strict score_threshold is the abstention GATE: even a very loose
+    # support_threshold must not make an out-of-scope query retrieve anything.
+    assert kb.search("what is the capital of France", k=4, support_threshold=-100.0) == []
+
+
+def test_support_threshold_admits_supporting_chunks_after_gate(kb):
+    # Once the gate is open (in-scope), a looser support_threshold admits further,
+    # mildly-negative supporting chunks the strict gate alone would drop.
+    q = "what is scaled dot-product attention"
+    strict = kb.search(q, k=6, support_threshold=0.0)        # gate only (>= 0.0)
+    loose = kb.search(q, k=6, support_threshold=-100.0)       # admit down to -100
+    assert loose and loose[0].score >= 0.0                    # gate opened
+    assert all(h.score >= 0.0 for h in strict)                # strict keeps only >= gate
+    assert len(loose) >= len(strict)                          # loosening never removes
+    if len(loose) > len(strict):                              # extras are sub-gate
+        assert any(h.score < 0.0 for h in loose)

@@ -37,6 +37,13 @@ DEFAULT_RERANKER_MODEL = os.environ.get(
 # so any threshold in [-2.5, 2.5] gives precision/recall/abstention = 1.0; 0.0 is
 # a safe midpoint. Re-run the calibration script if you change corpus/reranker.
 DEFAULT_SCORE_THRESHOLD = float(os.environ.get("SCORE_THRESHOLD", "0.0"))
+# Looser bar for admitting *supporting* chunks AFTER the strict threshold gate has
+# opened (i.e. at least one chunk cleared SCORE_THRESHOLD, so the question is
+# in-scope). Recovers multi-hop second sources the reranker scores mildly negative,
+# without weakening abstention — the strict gate alone decides whether anything is
+# returned at all. Clamped to <= SCORE_THRESHOLD in search(). Set equal to
+# SCORE_THRESHOLD to disable (restores single-threshold behaviour).
+DEFAULT_SUPPORT_THRESHOLD = float(os.environ.get("SUPPORT_THRESHOLD", "-2.5"))
 # RRF constant for reciprocal-rank fusion.
 DEFAULT_RRF_K = int(os.environ.get("RRF_K", "60"))
 
@@ -118,6 +125,7 @@ class Configuration:
     top_k: int = DEFAULT_TOP_K
     candidate_k: int = DEFAULT_CANDIDATE_K
     score_threshold: float = DEFAULT_SCORE_THRESHOLD
+    support_threshold: float = DEFAULT_SUPPORT_THRESHOLD
     recursion_limit: int = DEFAULT_RECURSION_LIMIT
     orchestrator_recursion_limit: int = DEFAULT_ORCHESTRATOR_RECURSION_LIMIT
     entailment_backend: str = DEFAULT_ENTAILMENT_BACKEND
