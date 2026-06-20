@@ -9,7 +9,11 @@ Run from the project root, after ingesting the corpus that matches the split:
 Metrics (reported overall AND broken down by category — the per-category view is
 what lets us prove later milestones, e.g. multi-hop, actually improve):
     intent    - router decision matches expected (in_scope vs out_of_scope)
-    recall    - expected source doc(s) present in retriever top-k
+    recall    - expected source doc(s) present in a single-shot retriever top-k
+                on the full question (understates multi-hop — see coverage)
+    coverage  - expected source doc(s) the agent ACTUALLY retrieved end-to-end this
+                run, unioned over the orchestrator's per-sub-question retrievals;
+                the metric that reflects what multi-hop questions really exercise
     answer    - LLM judges the final answer meets the criterion (in_scope cases)
     citation  - verified citations point to an expected source (in_scope sourced)
     refusal   - out_of_scope / no_answer cases correctly declined
@@ -83,7 +87,7 @@ def _mark(v):
 
 def _blank_stats():
     return {
-        "n": 0, "intent_c": 0, "intent_t": 0, "recalls": [],
+        "n": 0, "intent_c": 0, "intent_t": 0, "recalls": [], "coverages": [],
         "ans_c": 0, "ans_t": 0, "cite_c": 0, "cite_t": 0,
         "ref_c": 0, "ref_t": 0, "hallucinated": 0, "errors": 0,
     }
@@ -93,11 +97,18 @@ def _summarise(s: dict) -> dict:
     def pct(c, t):
         return None if not t else round(c / t, 4)
 
-    mean_recall = sum(s["recalls"]) / len(s["recalls"]) if s["recalls"] else None
+    def mean(xs):
+        return round(sum(xs) / len(xs), 4) if xs else None
+
     return {
         "cases": s["n"],
         "intent_accuracy": pct(s["intent_c"], s["intent_t"]),
-        "recall_mean": round(mean_recall, 4) if mean_recall is not None else None,
+        # recall_mean: single-shot retrieval on the full question (k=TOP_K).
+        # coverage_mean: sources the agent actually retrieved end-to-end this run,
+        # i.e. across the orchestrator's per-sub-question retrievals — the metric
+        # that reflects what multi-hop questions really exercise.
+        "recall_mean": mean(s["recalls"]),
+        "coverage_mean": mean(s["coverages"]),
         "answer_correctness": pct(s["ans_c"], s["ans_t"]),
         "citation_grounding": pct(s["cite_c"], s["cite_t"]),
         "refusal_accuracy": pct(s["ref_c"], s["ref_t"]),
@@ -128,7 +139,10 @@ def main():
     overall = _blank_stats()
     per_cat: dict[str, dict] = defaultdict(_blank_stats)
 
-    header = f"{'case':<26}{'cat':<14}{'intent':<8}{'recall':<8}{'answer':<8}{'citation':<10}{'refusal':<8}"
+    header = (
+        f"{'case':<26}{'cat':<14}{'intent':<8}{'recall':<8}{'cover':<8}"
+        f"{'answer':<8}{'citation':<10}{'refusal':<8}"
+    )
     print(header)
     print("-" * len(header))
 
@@ -161,6 +175,20 @@ def main():
         intent = o["intent"]
         cited = {source_of(c).rsplit("/", 1)[-1] for c in o["citations"]}
 
+        # End-to-end source coverage: did the agent ACTUALLY retrieve the gold
+        # sources this run, summed over the orchestrator's per-sub-question
+        # retrievals (recall above only sees one single-shot search on the full
+        # question, so it understates multi-hop where decomposition does the work).
+        coverage = None
+        if exp_sources:
+            agent_sources = {
+                source_of(loc).rsplit("/", 1)[-1]
+                for loc in (result.get("retrieved_locators", []) or [])
+            }
+            coverage = len(exp_sources & agent_sources) / len(exp_sources)
+            for b in buckets:
+                b["coverages"].append(coverage)
+
         intent_ok = intent == exp_router
 
         cite_ok = None
@@ -189,7 +217,7 @@ def main():
         ans_cell = answer_ok if exp_intent == "in_scope" else None
         print(
             f"{case['id']:<26}{cat:<14}{_mark(intent_ok):<8}{_mark(recall):<8}"
-            f"{_mark(ans_cell):<8}{_mark(cite_ok):<10}{_mark(refusal_ok):<8}"
+            f"{_mark(coverage):<8}{_mark(ans_cell):<8}{_mark(cite_ok):<10}{_mark(refusal_ok):<8}"
         )
 
     print("-" * len(header))
@@ -197,10 +225,13 @@ def main():
     def pct(c, t):
         return f"{c}/{t} ({100 * c / t:.0f}%)" if t else "n/a"
 
-    mean_recall = sum(overall["recalls"]) / len(overall["recalls"]) if overall["recalls"] else 0.0
+    def _mean(xs):
+        return sum(xs) / len(xs) if xs else 0.0
+
     print("\n=== OVERALL ===")
     print(f"Intent routing accuracy : {pct(overall['intent_c'], overall['intent_t'])}")
-    print(f"Retrieval recall (mean) : {mean_recall:.2f}")
+    print(f"Retrieval recall (single-shot)   : {_mean(overall['recalls']):.2f}")
+    print(f"Source coverage (agent, e2e)     : {_mean(overall['coverages']):.2f}")
     print(f"Answer correctness      : {pct(overall['ans_c'], overall['ans_t'])}")
     print(f"Citation grounding      : {pct(overall['cite_c'], overall['cite_t'])}")
     print(f"Refusal accuracy        : {pct(overall['ref_c'], overall['ref_t'])}")
@@ -209,7 +240,10 @@ def main():
         print(f"Errored cases (skipped) : {overall['errors']}/{overall['n']}")
 
     print("\n=== BY CATEGORY ===")
-    cat_header = f"{'category':<16}{'n':>4}{'intent':>9}{'recall':>9}{'answer':>9}{'citation':>10}{'refusal':>9}"
+    cat_header = (
+        f"{'category':<16}{'n':>4}{'intent':>9}{'recall':>9}{'cover':>9}"
+        f"{'answer':>9}{'citation':>10}{'refusal':>9}"
+    )
     print(cat_header)
     print("-" * len(cat_header))
     for cat in sorted(per_cat):
@@ -217,6 +251,7 @@ def main():
         print(
             f"{cat:<16}{s['cases']:>4}"
             f"{_mark(s['intent_accuracy']):>9}{_mark(s['recall_mean']):>9}"
+            f"{_mark(s['coverage_mean']):>9}"
             f"{_mark(s['answer_correctness']):>9}{_mark(s['citation_grounding']):>10}"
             f"{_mark(s['refusal_accuracy']):>9}"
         )

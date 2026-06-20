@@ -182,39 +182,49 @@ judge model. Numbers move with the model/corpus — swap `LLM_MODEL` and re-run
 | Metric | Result |
 |---|---|
 | Intent routing accuracy | **99%** (158/159) |
-| Retrieval recall (mean) | **0.86** |
-| Answer correctness (LLM-judged) | **97%** (141/145) |
+| Retrieval recall (single-shot) | **0.86** |
+| Source coverage (agent, end-to-end) | **0.94** |
+| Answer correctness (LLM-judged) | **98%** (142/145) |
 | Citation grounding | **94%** (137/145) |
 | Refusal accuracy | **93%** (13/14) |
-| Hallucinated citations | **4** — all on questions it *should* refuse (no_answer 3 + out_of_scope 1) |
+| Hallucinated citations | **1** (this run; varies 0–4 across runs, always on questions it should refuse) |
+
+> **Two retrieval metrics (important):** `recall` is a single search on the whole
+> compound question — is each gold source in the top-k? `coverage` is what the agent
+> *actually* retrieved this run, unioned over the orchestrator's per-sub-question
+> retrievals for multi-hop. The latter reflects real capability — see multi-hop below.
 
 Per category:
 
-| Category | n | intent | recall | answer | grounding | refusal |
-|---|---|---|---|---|---|---|
-| single_paper | 41 | 1.00 | 0.95 | 1.00 | 0.95 | — |
-| definitional | 43 | 1.00 | 0.93 | 0.98 | 0.88 | — |
-| multi_hop | 54 | 1.00 | 0.70 | 0.94 | 0.98 | — |
-| numeric | 7 | 1.00 | 1.00 | 1.00 | 1.00 | — |
-| out_of_scope | 5 | 0.80 | — | — | — | 1.00 |
-| no_answer | 9 | 1.00 | — | — | — | 0.89 |
+| Category | n | intent | recall | cover | answer | grounding | refusal |
+|---|---|---|---|---|---|---|---|
+| single_paper | 41 | 1.00 | 0.95 | 1.00 | 1.00 | 0.95 | — |
+| definitional | 43 | 1.00 | 0.93 | 1.00 | 1.00 | 0.91 | — |
+| multi_hop | 54 | 1.00 | 0.70 | 0.83 | 0.94 | 0.98 | — |
+| numeric | 7 | 1.00 | 1.00 | 1.00 | 1.00 | 0.86 | — |
+| out_of_scope | 5 | 0.80 | — | — | — | — | 1.00 |
+| no_answer | 9 | 1.00 | — | — | — | — | 0.89 |
 
 > **Multi-document ("one question, many articles")** is the focus and the hardest
 > case: across the **54 multi-hop questions** (each needs ≥2 documents) — citation
 > grounding **0.98**, **0 hallucinated citations in this category**, answer
-> correctness **0.94**, retrieval recall **0.70** (strict all-of: it must surface
-> *every* passage a question needs, not the looser any-of recall@k, so the number is
-> naturally lower and not directly comparable to looser reports). Multi-hop recall
-> remains the weakest cell in the table and the main thing to push on next.
+> correctness **0.94**. Split the retrieval metrics: single-shot recall is **0.70**
+> (strict all-of — it must surface *every* passage a question needs, not the looser
+> any-of recall@k, so not comparable to looser reports), but the agent's **end-to-end
+> source coverage is 0.83**: decomposing into sub-questions recovers sources a single
+> search on the compound question misses. 0.83 is still < 1.0 — the remaining gap is
+> the reranker scoring the second source below the relevance threshold (diagnosis in
+> the [failure-case backlog](docs/failure-cases.md)), which is what to push on next.
 
-> **Known weak spots (failure cases, recorded honestly):** (1) all 4 hallucinated
-> citations land on questions the system *should* refuse (no_answer / out_of_scope)
-> — it occasionally invents a locator for something the docs don't cover, which is
+> **Known weak spots (failure cases, recorded honestly):** (1) hallucinated citations
+> all land on questions the system *should* refuse (no_answer / out_of_scope; 0–4
+> across runs) — it occasionally invents a locator for something the docs don't cover,
 > the next gap for citation verification to close; (2) 1 of 5 out_of_scope questions
 > is mis-routed as in_scope (intent 0.80, small n); (3) refusal accuracy is 0.89–0.93,
-> not perfect — boundary cases still slip through. These, together with the 35
-> retrieval-recall misses, are catalogued in the [failure-case backlog](docs/failure-cases.md)
-> to be reproduced and fixed one by one. Numbers depend on `LLM_MODEL`.
+> not perfect; (4) multi-hop end-to-end coverage 0.83 isn't maxed — the gap is a
+> reranker/threshold trade-off. These, with the 35 single-shot recall misses and their
+> root-cause diagnosis, are catalogued in the [failure-case backlog](docs/failure-cases.md).
+> Numbers depend on `LLM_MODEL`.
 
 ## Project layout
 
