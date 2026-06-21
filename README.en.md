@@ -28,28 +28,35 @@ retrieved, down to the **PDF page**.
 
 ## Quickstart
 
+**One-command setup** (uv installs Python + venv + deps; idempotent, never overwrites an existing `.env`):
+
 ```bash
-# 1. Environment (Python 3.11)
-conda create -n citelocal-agent python=3.11 -c conda-forge
-conda activate citelocal-agent
-pip install -e .
+./install.sh                       # uv (if missing) → .venv(3.12) → pip install -e . → scaffold .env
+# edit .env: set OPENAI_API_KEY (or point OPENAI_BASE_URL at any OpenAI-compatible gateway / use an ollama: model)
+.venv/bin/citelocal doctor         # preflight: Python / deps / key / gateway-reachable+model-served / corpus
+```
 
-# 2. Answer LLM: put OPENAI_API_KEY in .env — or go fully local:
-cp .env.example .env
-#   pip install -e ".[ollama]"  &&  set LLM_MODEL=ollama:llama3.1 in .env
+Then use the single **`citelocal`** command (same flags as `python -m citelocal_agent.<x>`):
 
-# 3. Get some papers (downloaded locally, never uploaded) and index them
+```bash
+# fetch papers (downloaded locally, never uploaded) and index them
 python scripts/fetch_arxiv.py --demo          # 8 papers: Attention, RAG, BERT, T5, RoBERTa, DPR, SBERT, GPT-3
 #   or: python scripts/fetch_arxiv.py 1706.03762 2005.11401  (any arXiv ids)
-python -m citelocal_agent.ingest --path ./papers --reset
+citelocal ingest --path ./papers --reset
 
-# 4. Ask
-python -m citelocal_agent.ask --trace "How is BERT related to the Transformer?"
-#   multi-turn chat (follow-ups remember earlier turns):
-python -m citelocal_agent.chat
-#   or the web UI:
-python -m citelocal_agent.web        # http://127.0.0.1:8000
+citelocal ask --trace "How is BERT related to the Transformer?"
+citelocal chat                     # multi-turn (follow-ups remember earlier turns)
+citelocal web                      # web UI → http://127.0.0.1:8000
 ```
+
+<details><summary>Manual install (conda / pip)</summary>
+
+```bash
+conda create -n citelocal-agent python=3.11 -c conda-forge && conda activate citelocal-agent
+pip install -e .            # the `citelocal` command is then available; or keep using python -m citelocal_agent.<x>
+cp .env.example .env        # set OPENAI_API_KEY; fully local: pip install -e ".[ollama]"
+```
+</details>
 
 Point `ingest --path` at any folder of your own `.pdf` / `.md` / `.rst` / `.txt`.
 
@@ -234,6 +241,7 @@ src/citelocal_agent/
 ├── retriever.py        # hybrid: dense+BM25 -> RRF -> rerank -> threshold
 ├── ingest.py           # load -> chunk (+page/line provenance) -> embed -> Chroma
 ├── ask.py / web.py     # CLI / FastAPI + static web UI
+├── cli.py / doctor.py  # unified `citelocal` command + install/config self-check
 ├── tools/              # make_retrieval_tools(retriever, cfg); Answer, Question
 ├── utils.py            # extract_outcome(): citation verification
 └── eval/               # data/qa_cases.jsonl (dataset) + qa_dataset.py (loader) + run_eval.py

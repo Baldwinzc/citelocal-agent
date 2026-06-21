@@ -203,6 +203,44 @@ def test_research_loop_passthrough_on_success():
     }
 
 
+def test_cli_version_and_usage(capsys):
+    from citelocal_agent import version
+    from citelocal_agent.cli import main
+
+    assert main(["--version"]) == 0
+    assert version in capsys.readouterr().out
+    assert main([]) == 0
+    assert "usage: citelocal" in capsys.readouterr().out
+
+
+def test_cli_unknown_command_exits_nonzero(capsys):
+    from citelocal_agent.cli import main
+
+    assert main(["frobnicate"]) == 2
+    assert "unknown command" in capsys.readouterr().err
+
+
+def test_cli_resolve_maps_known_commands():
+    from citelocal_agent import doctor
+    from citelocal_agent.cli import _resolve
+
+    assert _resolve("doctor") is doctor.main      # known -> callable
+    assert callable(_resolve("ask"))
+    assert _resolve("frobnicate") is None          # unknown -> None
+
+
+def test_doctor_python_and_model_checks():
+    from citelocal_agent.doctor import _check_answer_model, _check_python
+
+    assert _check_python()[0] == "ok"  # CI runs >= 3.11
+
+    assert _check_answer_model({"LLM_MODEL": "ollama:llama3.1"})[0] == "ok"  # local, no key
+    assert _check_answer_model(
+        {"LLM_MODEL": "openai:gpt-5.4-mini", "OPENAI_API_KEY": "sk-x"}
+    )[0] == "ok"
+    assert _check_answer_model({"LLM_MODEL": "openai:gpt-5.4-mini"})[0] == "warn"  # no key
+
+
 def test_question_extraction():
     result = {
         "classification_decision": "in_scope",

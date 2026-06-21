@@ -17,28 +17,35 @@
 
 ## 快速开始
 
+**一键装机**（用 uv 装好 Python + venv + 依赖，幂等、不覆盖已有 `.env`）：
+
 ```bash
-# 1. 环境（Python 3.11）
-conda create -n citelocal-agent python=3.11 -c conda-forge
-conda activate citelocal-agent
-pip install -e .
+./install.sh                       # 装 uv（如缺）→ .venv(3.12) → pip install -e . → 生成 .env
+# 编辑 .env 填 OPENAI_API_KEY（或用 OPENAI_BASE_URL 指向任意 OpenAI 兼容网关 / ollama 本地模型）
+.venv/bin/citelocal doctor         # 自检：Python / 依赖 / key / 网关连通+模型可用 / 语料
+```
 
-# 2. 作答 LLM：把 OPENAI_API_KEY 填进 .env —— 或完全本地：
-cp .env.example .env
-#   pip install -e ".[ollama]"  且在 .env 设 LLM_MODEL=ollama:llama3.1
+装好后用统一的 **`citelocal`** 命令（等价于 `python -m citelocal_agent.<x>`，省去记模块路径）：
 
-# 3. 拉论文（本地下载，绝不上传）并建索引
+```bash
+# 拉论文（本地下载，绝不上传）并建索引
 python scripts/fetch_arxiv.py --demo          # 8 篇：Attention、RAG、BERT、T5、RoBERTa、DPR、SBERT、GPT-3
 #   或：python scripts/fetch_arxiv.py 1706.03762 2005.11401  （任意 arXiv id）
-python -m citelocal_agent.ingest --path ./papers --reset
+citelocal ingest --path ./papers --reset
 
-# 4. 提问
-python -m citelocal_agent.ask --trace "How is BERT related to the Transformer?"
-#   多轮对话（追问会记住前几轮）：
-python -m citelocal_agent.chat
-#   或 Web UI：
-python -m citelocal_agent.web        # http://127.0.0.1:8000
+citelocal ask --trace "How is BERT related to the Transformer?"
+citelocal chat                     # 多轮对话（追问会记住前几轮）
+citelocal web                      # Web UI → http://127.0.0.1:8000
 ```
+
+<details><summary>手动安装（conda / pip）</summary>
+
+```bash
+conda create -n citelocal-agent python=3.11 -c conda-forge && conda activate citelocal-agent
+pip install -e .            # 之后 citelocal 命令即可用；或继续用 python -m citelocal_agent.<x>
+cp .env.example .env        # 填 OPENAI_API_KEY；ollama 本地：pip install -e ".[ollama]"
+```
+</details>
 
 把 `ingest --path` 指向任意装有你自己 `.pdf` / `.md` / `.rst` / `.txt` 的文件夹即可。
 
@@ -177,6 +184,7 @@ src/citelocal_agent/
 ├── retriever.py        # 混合检索：dense+BM25 -> RRF -> 重排 -> 阈值
 ├── ingest.py           # 加载 -> 切块(带页码/行号出处) -> 向量化 -> Chroma
 ├── ask.py / web.py     # CLI / FastAPI + 静态 Web UI
+├── cli.py / doctor.py  # 统一 `citelocal` 命令 + 安装/配置自检
 ├── tools/              # make_retrieval_tools + make_web_tools(可选); Answer, Question
 ├── utils.py            # extract_outcome()：引用校验
 └── eval/               # data/qa_cases.jsonl(数据集) + qa_dataset.py(加载器) + run_eval.py
