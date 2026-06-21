@@ -69,6 +69,22 @@ def _strip_citation_markers(answer: str, bad_citations: List[str]) -> str:
     return text.strip()
 
 
+def filter_citations_to_allowed(
+    answer: str, citations: List[str], allowed: List[str]
+) -> tuple[str, list[str]]:
+    """Keep only citations present in ``allowed``; scrub the dropped ones' markers.
+
+    Used where a model may cite beyond its evidence — notably the orchestrator's
+    synthesizer, whose only legitimate sources are the union of the researchers'
+    citations. A citation outside that set has no evidence behind it, so it (and its
+    inline ``[marker]``) is removed. Returns ``(cleaned_answer, kept_citations)``.
+    """
+    allowed_set = set(allowed)
+    kept = [c for c in citations if c in allowed_set]
+    dropped = [c for c in citations if c not in allowed_set]
+    return _strip_citation_markers(answer, dropped), kept
+
+
 def extract_outcome(
     result: dict,
     *,

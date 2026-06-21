@@ -28,7 +28,7 @@ from citelocal_agent.prompts import (
 )
 from citelocal_agent.schemas import PlanSchema, State
 from citelocal_agent.tools import Answer
-from citelocal_agent.utils import extract_outcome
+from citelocal_agent.utils import extract_outcome, filter_citations_to_allowed
 from citelocal_agent.verify import verify_claims
 
 logger = logging.getLogger(__name__)
@@ -132,6 +132,7 @@ def build_orchestrator(
         """Combine verified findings into one final Answer tool call."""
         question = state["question_input"].get("question", "")
         findings = []
+        allowed: list[str] = []  # union of the researchers' citations (de-duped, ordered)
         for sr in state["verified_results"]:
             supported = sr["verification"]["supported"]
             # Prefer the entailment-supported sentences; fall back to the full
@@ -142,6 +143,9 @@ def build_orchestrator(
                 f"Finding: {body}\n"
                 f"Citations: {', '.join(sr['citations']) or '(none)'}"
             )
+            for c in sr["citations"]:
+                if c not in allowed:
+                    allowed.append(c)
         context = "\n\n".join(findings) or "(no findings)"
         msg = synth_llm.invoke(
             [
@@ -150,10 +154,23 @@ def build_orchestrator(
                     "role": "user",
                     "content": f"Original question:\n{question}\n\n"
                     f"Verified findings:\n{context}\n\n"
+                    f"You may cite ONLY these locators: {', '.join(allowed) or '(none)'}\n\n"
                     "Write the final answer and call the Answer tool.",
                 },
             ]
         )
+        # Enforce the allow-list deterministically: a synth citation outside the
+        # researchers' union has no evidence behind it (this is where fabricated
+        # 'sub-question N' labels crept in). Drop it and scrub its inline marker.
+        for tc in getattr(msg, "tool_calls", None) or []:
+            if tc.get("name") == "Answer":
+                cleaned, kept = filter_citations_to_allowed(
+                    tc["args"].get("answer", "") or "",
+                    tc["args"].get("citations", []) or [],
+                    allowed,
+                )
+                tc["args"]["answer"] = cleaned
+                tc["args"]["citations"] = kept
         return {"messages": [msg], "trace": [{"step": "synthesizer"}]}
 
     builder = StateGraph(State)

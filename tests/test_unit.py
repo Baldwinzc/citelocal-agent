@@ -140,6 +140,36 @@ def test_unrelated_brackets_not_stripped():
     assert o["answer"] == "Step [1] runs in a threadpool [async.md:L10-20]."
 
 
+def test_filter_citations_to_allowed():
+    from citelocal_agent.utils import filter_citations_to_allowed
+
+    # The synthesizer's only legitimate sources are the union of researcher
+    # citations; a fabricated label outside it is dropped and its marker scrubbed.
+    answer = (
+        "BERT is an encoder [bert.pdf (p.1)] and is pre-trained "
+        "[verified findings: sub-question 2]."
+    )
+    allowed = ["bert.pdf (p.1)", "gpt.pdf (p.3)"]
+    cleaned, kept = filter_citations_to_allowed(
+        answer, ["bert.pdf (p.1)", "verified findings: sub-question 2"], allowed
+    )
+    assert kept == ["bert.pdf (p.1)"]
+    assert "verified findings" not in cleaned
+    assert "[bert.pdf (p.1)]" in cleaned
+    assert "  " not in cleaned
+
+
+def test_filter_citations_to_allowed_noop_when_all_allowed():
+    from citelocal_agent.utils import filter_citations_to_allowed
+
+    answer = "BERT is an encoder [bert.pdf (p.1)]."
+    cleaned, kept = filter_citations_to_allowed(
+        answer, ["bert.pdf (p.1)"], ["bert.pdf (p.1)", "other.md:L1-2"]
+    )
+    assert cleaned == answer  # nothing dropped -> prose untouched
+    assert kept == ["bert.pdf (p.1)"]
+
+
 def test_question_extraction():
     result = {
         "classification_decision": "in_scope",
