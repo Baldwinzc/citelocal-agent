@@ -170,6 +170,39 @@ def test_filter_citations_to_allowed_noop_when_all_allowed():
     assert kept == ["bert.pdf (p.1)"]
 
 
+def test_research_loop_budget_fallback():
+    # A runaway loop (GraphRecursionError) degrades to an honest message instead
+    # of crashing the request; extract_outcome then renders it as a normal answer.
+    from langgraph.errors import GraphRecursionError
+
+    from citelocal_agent.agent import _BUDGET_FALLBACK_MSG, _run_research_loop
+
+    class _Boom:
+        def invoke(self, *a, **k):
+            raise GraphRecursionError("limit reached")
+
+    msgs = [{"role": "user", "content": "some unanswerable, sprawling question"}]
+    out = _run_research_loop(_Boom(), msgs, 12)
+    assert out["messages"][-1].content == _BUDGET_FALLBACK_MSG
+    assert out["trace"] == [{"step": "budget_exhausted"}]
+
+    o = extract_outcome({**out, "classification_decision": "in_scope"})
+    assert o["answer"] == _BUDGET_FALLBACK_MSG
+    assert o["citations"] == [] and o["unsupported"] == []
+
+
+def test_research_loop_passthrough_on_success():
+    from citelocal_agent.agent import _run_research_loop
+
+    class _Ok:
+        def invoke(self, *a, **k):
+            return {"messages": ["ok"], "trace": [], "retrieved_locators": []}
+
+    assert _run_research_loop(_Ok(), [], 12) == {
+        "messages": ["ok"], "trace": [], "retrieved_locators": []
+    }
+
+
 def test_question_extraction():
     result = {
         "classification_decision": "in_scope",

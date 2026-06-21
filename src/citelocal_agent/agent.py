@@ -30,6 +30,8 @@ from functools import lru_cache
 from typing import Literal, cast
 
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import AIMessage
+from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
@@ -60,6 +62,12 @@ from citelocal_agent.utils import extract_message_content
 logger = logging.getLogger(__name__)
 
 TERMINAL_TOOLS = {"Answer", "Question"}
+# Honest degradation when the retrieval loop can't converge within its step budget
+# (GraphRecursionError) — better than crashing the request or silently re-running.
+_BUDGET_FALLBACK_MSG = (
+    "I couldn't reach a confident, grounded answer within the step budget for this "
+    "question. It may be too broad or not covered by the documents — try narrowing it."
+)
 # Parse each search_docs result block: "[i] locator: <loc>  (relevance <s>)\n<text>".
 # Captures both the locator (verified against citations) and the chunk text
 # (kept as evidence for entailment checks). DOTALL + a lookahead to the next
@@ -193,6 +201,24 @@ def _merge_subgraph_result(out: dict, prior_msg_count: int) -> dict:
     return update
 
 
+def _run_research_loop(loop, msgs: list, recursion_limit: int) -> dict:
+    """Invoke the retrieval loop, degrading gracefully if it can't converge.
+
+    A runaway loop raises ``GraphRecursionError``. Rather than let it crash the
+    request (the simple path had no guard, and the orchestrator's fallback re-ran
+    an unguarded loop), return an honest fallback message — the normal outcome
+    path renders it as a "couldn't answer" response instead of a 500 / stack trace.
+    """
+    try:
+        return loop.invoke({"messages": msgs}, config={"recursion_limit": recursion_limit})
+    except GraphRecursionError:
+        logger.warning("research loop hit the recursion limit; degrading gracefully")
+        return {
+            "messages": list(msgs) + [AIMessage(content=_BUDGET_FALLBACK_MSG)],
+            "trace": [{"step": "budget_exhausted"}],
+        }
+
+
 def build_agent(config: Configuration | None = None, checkpointer=None):
     """Build and compile the agent graph for a given configuration.
 
@@ -240,9 +266,7 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
     # top-level limit). The top-level graph is then just router -> one node.
     def response_agent(state: State):
         msgs = state["messages"]
-        out = research_loop.invoke(
-            {"messages": msgs}, config={"recursion_limit": config.recursion_limit}
-        )
+        out = _run_research_loop(research_loop, msgs, config.recursion_limit)
         return _merge_subgraph_result(out, len(msgs))
 
     def orchestrator_node(state: State):
@@ -254,12 +278,12 @@ def build_agent(config: Configuration | None = None, checkpointer=None):
         except Exception as e:  # noqa: BLE001
             # The complex path can fail in many ways (a model emitting malformed
             # structured output, a researcher exhausting its step budget). Degrade
-            # to the simple retrieval loop rather than crashing the request.
+            # to the simple retrieval loop rather than crashing the request — and
+            # that loop is itself recursion-safe via _run_research_loop.
             logger.warning("orchestrator failed (%s); falling back to the simple path", e)
             question = state["question_input"].get("question", "")
-            out = research_loop.invoke(
-                {"messages": [{"role": "user", "content": question}]},
-                config={"recursion_limit": config.recursion_limit},
+            out = _run_research_loop(
+                research_loop, [{"role": "user", "content": question}], config.recursion_limit
             )
             return _merge_subgraph_result(out, 1)
 
