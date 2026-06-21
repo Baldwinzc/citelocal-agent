@@ -176,6 +176,26 @@ python -m citelocal_agent.eval.run_eval --split offline_sample --categories mult
 
 > **已知薄弱点(失败案例,如实记录):** ① 幻觉引用都落在**应当拒答**的 no_answer / out_of_scope 题上(不同 run 0–4 条);② 5 道 out_of_scope 题里有 1 道被误判为 in_scope(意图 0.80,样本小);③ 拒答准确率 0.89/0.93 非满分;④ 引用接地总体 ~0.92,definitional/numeric 偏低(numeric n=7,波动大;`SUPPORT_THRESHOLD=0` 较激进、会纳入弱 chunk,可能稀释引用——属可调项)。详见[失败案例库](docs/failure-cases.md)。
 
+### 真实论文实测(`full_corpus`,8 篇 arXiv PDF)
+
+为回应「只测了合成语料」,在 **8 篇真实 arXiv 论文**(Attention / RAG / BERT / T5 / RoBERTa / DPR / SBERT / GPT-3,共 **989 chunks**、真实 PDF 版式)上跑 `full_corpus` 的 **31 条**(同 `bge-reranker-v2-m3` + `gpt-5.4-mini`):
+
+| 指标 | 结果 |
+|---|---|
+| 意图路由准确率 | **100%** (31/31) |
+| 检索召回(单次检索) | **0.93** |
+| 源覆盖(agent 端到端) | **1.00** |
+| 答案正确率(LLM 评判) | **96%** (26/27) |
+| 引用准确率(接地) | **100%** (27/27) |
+| 拒答准确率 | **100%** (4/4) |
+| 幻觉引用 | **0** |
+
+复现:`python scripts/fetch_arxiv.py --demo` → `citelocal ingest --path ./papers --reset` → `python -m citelocal_agent.eval.run_eval --split full_corpus`。
+
+> **诚实读法(别把小样本当定论):** full_corpus 只有 **31 条**(单源 19、多跳仅 **2**、拒答类各 2)——上面的 100% 是**方向性**信号,不是统计证明;多跳 n=2 召回 0.50(即 1/2)、numeric 0.75(3/4),更只是轶事。真实论文上**0 幻觉、引用接地 100%、端到端覆盖 1.00** 是可信的好兆头,但样本量需扩充才能下结论。
+>
+> **PDF 解析局限(评审点名「公式/表格表现未知」,如实说):** 当前用 `pypdf` 做**纯文本**抽取,**表格 / 公式 / 多栏版式会被拍平**成文本流(只保留页码 locator)。上面的 QA 多由文本 chunk 生成、属**正文可答**,所以这套数字**尚未**真正考核表格 / 公式 / 扫描版论文——那仍是**已知盲区**,列入后续(换版面感知的 PDF 解析)。
+
 ## 目录结构
 
 ```

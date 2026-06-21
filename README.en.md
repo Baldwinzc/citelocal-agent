@@ -233,6 +233,37 @@ Per category:
 > is permissive and admits weak chunks that can dilute citations — a tunable). Catalogued in the
 > [failure-case backlog](docs/failure-cases.md). Numbers depend on `LLM_MODEL`.
 
+### Real papers (`full_corpus`, 8 arXiv PDFs)
+
+To answer "the eval only uses synthetic notes", the `full_corpus` split was run on
+**8 real arXiv papers** (Attention / RAG / BERT / T5 / RoBERTa / DPR / SBERT / GPT-3 —
+**989 chunks** from real PDF layout), **31 cases**, same `bge-reranker-v2-m3` + `gpt-5.4-mini`:
+
+| Metric | Result |
+|---|---|
+| Intent routing accuracy | **100%** (31/31) |
+| Retrieval recall (single-shot) | **0.93** |
+| Source coverage (agent, end-to-end) | **1.00** |
+| Answer correctness (LLM-judged) | **96%** (26/27) |
+| Citation grounding | **100%** (27/27) |
+| Refusal accuracy | **100%** (4/4) |
+| Hallucinated citations | **0** |
+
+Reproduce: `python scripts/fetch_arxiv.py --demo` → `citelocal ingest --path ./papers --reset` → `python -m citelocal_agent.eval.run_eval --split full_corpus`.
+
+> **Read honestly (small n):** full_corpus is only **31 cases** (19 single-paper, just
+> **2** multi-hop, 2 each refusal type) — the 100%s are directional, not proof; multi-hop
+> n=2 recall is 0.50 (i.e. 1/2) and numeric 0.75 (3/4), which are anecdotes. That real
+> papers give **0 hallucinations, 100% citation grounding, 1.00 coverage** is an encouraging
+> sign, but the set must grow before drawing conclusions.
+>
+> **PDF-parsing limitation (the reviewer's "formulas/tables unknown", stated plainly):**
+> ingestion uses `pypdf` **text-only** extraction — **tables / formulas / multi-column
+> layout are flattened** to a text stream (only the page locator survives). These QA
+> cases are mostly prose-answerable (generated from text chunks), so these numbers do
+> **not** yet stress table/formula/scanned papers — a **known blind spot**, on the
+> backlog (layout-aware PDF parsing).
+
 ## Project layout
 
 ```
