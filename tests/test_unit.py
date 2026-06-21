@@ -76,6 +76,70 @@ def test_citation_verification_drops_hallucinated():
     assert o["unsupported"] == ["made-up.md:L1-2"]  # hallucinated -> dropped
 
 
+def test_unsupported_marker_scrubbed_from_answer_prose():
+    # A hallucinated inline [locator] must not leak into the user-facing answer,
+    # while the supported one stays. (ask.py / web.py print o["answer"] verbatim.)
+    result = {
+        "classification_decision": "in_scope",
+        "retrieved_locators": ["async.md:L10-20"],
+        "messages": [
+            _Msg(tool_calls=[{
+                "name": "Answer",
+                "args": {
+                    "answer": "Runs in a threadpool [async.md:L10-20] [made-up.md:L1-2].",
+                    "citations": ["async.md:L10-20", "made-up.md:L1-2"],
+                },
+            }])
+        ],
+    }
+    o = extract_outcome(result)
+    assert "made-up.md:L1-2" not in o["answer"]      # bogus marker scrubbed
+    assert "[async.md:L10-20]" in o["answer"]          # supported marker kept
+    assert "  " not in o["answer"]                     # no double-space artifact
+    assert o["citations"] == ["async.md:L10-20"]
+    assert o["unsupported"] == ["made-up.md:L1-2"]     # still recorded (metric honest)
+
+
+def test_orchestrator_scratch_label_scrubbed():
+    # The orchestrator-leak failure mode: an internal scratch label cited inline.
+    result = {
+        "classification_decision": "in_scope",
+        "retrieved_locators": ["bert.pdf (p.1)"],
+        "messages": [
+            _Msg(tool_calls=[{
+                "name": "Answer",
+                "args": {
+                    "answer": "BERT is an encoder [bert.pdf (p.1)] [verified findings: sub-question 1].",
+                    "citations": ["bert.pdf (p.1)", "verified findings: sub-question 1"],
+                },
+            }])
+        ],
+    }
+    o = extract_outcome(result)
+    assert "verified findings" not in o["answer"]
+    assert "[bert.pdf (p.1)]" in o["answer"]
+    assert o["unsupported"] == ["verified findings: sub-question 1"]
+
+
+def test_unrelated_brackets_not_stripped():
+    # Brackets that are not declared (unsupported) citations must be left alone.
+    result = {
+        "classification_decision": "in_scope",
+        "retrieved_locators": ["async.md:L10-20"],
+        "messages": [
+            _Msg(tool_calls=[{
+                "name": "Answer",
+                "args": {
+                    "answer": "Step [1] runs in a threadpool [async.md:L10-20].",
+                    "citations": ["async.md:L10-20"],
+                },
+            }])
+        ],
+    }
+    o = extract_outcome(result)
+    assert o["answer"] == "Step [1] runs in a threadpool [async.md:L10-20]."
+
+
 def test_question_extraction():
     result = {
         "classification_decision": "in_scope",

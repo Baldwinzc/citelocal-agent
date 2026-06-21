@@ -46,6 +46,29 @@ def source_of(locator: str) -> str:
     return re.split(r"[:(]", loc)[0].strip()
 
 
+def _strip_citation_markers(answer: str, bad_citations: List[str]) -> str:
+    """Remove inline ``[locator]`` markers for citations rejected as unsupported.
+
+    Keeps a hallucinated or internal-scratch locator the model wrote (e.g.
+    ``[verified findings: sub-question 1]`` or ``[none]``) from leaking into the
+    user-facing prose. Only brackets whose inner text *exactly* matches a rejected
+    citation are removed — supported markers and unrelated brackets (``[1]``,
+    ``[note]``) are left untouched. Formatting is tidied only if something was cut.
+    """
+    if not answer or not bad_citations:
+        return answer
+    text = answer
+    for c in bad_citations:
+        c = c.strip()
+        if c:
+            text = re.sub(r"\[\s*" + re.escape(c) + r"\s*\]", "", text)
+    if text == answer:
+        return answer  # nothing removed -> leave the prose (and its formatting) alone
+    text = re.sub(r"[ \t]{2,}", " ", text)  # collapse gaps left by removed markers
+    text = re.sub(r"\s+([.,;:!?])", r"\1", text)  # drop space before now-orphaned punct
+    return text.strip()
+
+
 def extract_outcome(
     result: dict,
     *,
@@ -117,6 +140,10 @@ def extract_outcome(
             supported.append(c)
         else:
             unsupported.append(c)
+
+    # Hygiene gate: scrub inline [locator] markers for the rejected citations out of
+    # the answer prose, so a hallucinated/scratch locator never reaches the user.
+    answer = _strip_citation_markers(answer, unsupported)
 
     # Optional per-sentence entailment check of the answer against the evidence.
     unsupported_sentences, claim_verdicts = [], []
